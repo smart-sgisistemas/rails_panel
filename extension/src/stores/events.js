@@ -1435,15 +1435,111 @@ export const useEventsStore = defineStore('events',  () => {
   const pendingDetailTab = ref(null)
   const detailTabNonce = ref(0)
 
-  function openCompareSide(side, tab = 'params') {
+  function openCompareSide(side, tab = 'params', highlightKeys = []) {
     const id = side === 'B' ? compareBId.value : compareAId.value
     if (!id) return false
     const action = actions.value.get(normalizeRequestId(id))
     if (!action) return false
     selectedRequest.value = action
+    setDetailHighlight(highlightKeys)
     pendingDetailTab.value = tab
     detailTabNonce.value += 1
     return true
+  }
+
+  function resolveCompareSide(row, preferredSide = 'B') {
+    if (row?.side === 'onlyA') return 'A'
+    if (row?.side === 'onlyB') return 'B'
+    return preferredSide === 'A' ? 'A' : 'B'
+  }
+
+  function highlightKeysForCompareRow(requestId, kind, row) {
+    const id = normalizeRequestId(requestId)
+    if (!id || !row) return []
+
+    if (kind === 'sql') {
+      const pattern = row.pattern
+      return (activeRecordQueries.value.get(id) || [])
+        .filter((q) => !isMetaSqlType(q.type) && normalizeSql(q.query) === pattern)
+        .map((q) => q.sourceKey)
+        .filter(Boolean)
+    }
+
+    if (kind === 'cache') {
+      const key = row.key
+      return (cacheCalls.value.get(id) || [])
+        .filter((c) => {
+          const k = c.key != null && String(c.key) !== '' ? String(c.key) : '(no key)'
+          return k === key
+        })
+        .map((c) => c.sourceKey)
+        .filter(Boolean)
+    }
+
+    if (kind === 'view') {
+      const path = row.path
+      return (actionViewRenders.value.get(id) || [])
+        .filter((v) => {
+          const p = v.view != null && String(v.view) !== '' ? String(v.view) : '(unknown)'
+          return p === path
+        })
+        .map((v) => v.sourceKey)
+        .filter(Boolean)
+    }
+
+    if (kind === 'exception') {
+      const label = row.label
+      return (exceptionStacktraces.value.get(id) || [])
+        .filter((t) => {
+          let raw = ''
+          try {
+            if (Array.isArray(t?.trace)) raw = t.trace.map((line) => String(line ?? '')).join('\n')
+            else if (t?.trace != null) raw = String(t.trace)
+          } catch {
+            raw = ''
+          }
+          const firstLine = raw.split('\n').map((l) => l.trim()).find(Boolean) || ''
+          return firstLine === label || (label && raw.includes(label))
+        })
+        .map((t) => t.sourceKey)
+        .filter(Boolean)
+    }
+
+    return []
+  }
+
+  const COMPARE_KIND_TAB = {
+    sql: 'database',
+    cache: 'cache',
+    view: 'rendering',
+    exception: 'error',
+    params: 'params',
+  }
+
+  /**
+   * From a Compare diff row: select A or B, open the matching detail tab,
+   * and highlight the underlying events (same as Timeline navigate).
+   */
+  function openCompareDiffRow(kind, row, preferredSide = 'B') {
+    if (!row) return false
+    const tab = COMPARE_KIND_TAB[kind] || 'timeline'
+    let side = resolveCompareSide(row, preferredSide)
+    let id = side === 'B' ? compareBId.value : compareAId.value
+    let keys = highlightKeysForCompareRow(id, kind, row)
+
+    // both sides: if preferred has no matches, try the other
+    if (!keys.length && row.side === 'both') {
+      const other = side === 'B' ? 'A' : 'B'
+      const otherId = other === 'B' ? compareBId.value : compareAId.value
+      const otherKeys = highlightKeysForCompareRow(otherId, kind, row)
+      if (otherKeys.length) {
+        side = other
+        id = otherId
+        keys = otherKeys
+      }
+    }
+
+    return openCompareSide(side, tab, keys)
   }
 
   const compareResult = computed(() => {
@@ -1798,6 +1894,7 @@ export const useEventsStore = defineStore('events',  () => {
     clearCompare,
     swapCompare,
     openCompareSide,
+    openCompareDiffRow,
     pendingDetailTab,
     detailTabNonce,
     exportCompareJson,

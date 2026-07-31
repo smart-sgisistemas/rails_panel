@@ -123,6 +123,40 @@
           Defaults: Slow/Heavy ≥300 ms, or ≥10% **and** ≥75 ms (avoids noise on tiny requests).
         </p>
       </section>
+
+      <section class="space-y-2">
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
+          Compare time noise
+        </h3>
+        <label class="flex items-center justify-between gap-3">
+          <span>Diff / Slower / Faster ≥ ms</span>
+          <input
+            v-model.number="settingsStore.compareDiffMs"
+            type="number"
+            min="0"
+            max="1000"
+            step="1"
+            class="w-20 rounded border border-surface-300 dark:border-surface-600
+                   bg-surface-0 dark:bg-surface-900 px-2 py-1 text-right tabular-nums"
+          />
+        </label>
+        <label class="flex items-center justify-between gap-3">
+          <span>…or ≥ % of row time</span>
+          <input
+            v-model.number="settingsStore.compareDiffPct"
+            type="number"
+            min="0"
+            max="50"
+            step="1"
+            class="w-20 rounded border border-surface-300 dark:border-surface-600
+                   bg-surface-0 dark:bg-surface-900 px-2 py-1 text-right tabular-nums"
+          />
+        </label>
+        <p class="text-[11px] text-surface-500 dark:text-surface-400 m-0">
+          A time change counts when |Δ| &gt; max(ms, % × max(time A, time B)).
+          Default: max(1 ms, 5%).
+        </p>
+      </section>
     </div>
   </Dialog>
 </template>

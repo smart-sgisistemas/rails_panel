@@ -316,38 +316,34 @@
       </div>
 
       <!-- Params diff -->
-      <div class="space-y-2">
-        <div class="flex flex-wrap items-center gap-2 justify-between">
-          <h3 class="text-xs font-bold uppercase tracking-wide text-surface-600 dark:text-surface-300">
-            Params
-            <span class="font-normal normal-case tracking-normal text-surface-400">
-              ({{ filteredParams.length }}/{{ visibleParamsBase.length }})
-            </span>
-          </h3>
-          <div class="flex flex-wrap items-center gap-2">
-            <label
-              class="inline-flex items-center gap-1 text-[10px] text-surface-600 dark:text-surface-300
-                     cursor-pointer select-none"
+      <CompareSection
+        v-model="sectionOpen.params"
+        title="Params"
+        :count-label="`${filteredParams.length}/${visibleParamsBase.length}`"
+      >
+        <template #actions>
+          <label
+            class="inline-flex items-center gap-1 text-[10px] text-surface-600 dark:text-surface-300
+                   cursor-pointer select-none"
+          >
+            <input v-model="hideFrameworkParams" type="checkbox" class="accent-primary-500" />
+            Hide framework
+          </label>
+          <div class="inline-flex flex-wrap gap-0.5 rounded border border-surface-200 dark:border-surface-700 p-0.5">
+            <button
+              v-for="opt in paramFilters"
+              :key="opt.key"
+              type="button"
+              class="rounded px-1.5 py-0.5 text-[10px] font-medium cursor-pointer select-none transition-colors"
+              :class="paramFilter === opt.key
+                ? 'bg-primary-500/15 text-primary-800 dark:text-primary-200'
+                : 'text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700'"
+              @click="paramFilter = opt.key"
             >
-              <input v-model="hideFrameworkParams" type="checkbox" class="accent-primary-500" />
-              Hide framework
-            </label>
-            <div class="inline-flex flex-wrap gap-0.5 rounded border border-surface-200 dark:border-surface-700 p-0.5">
-              <button
-                v-for="opt in paramFilters"
-                :key="opt.key"
-                type="button"
-                class="rounded px-1.5 py-0.5 text-[10px] font-medium cursor-pointer select-none transition-colors"
-                :class="paramFilter === opt.key
-                  ? 'bg-primary-500/15 text-primary-800 dark:text-primary-200'
-                  : 'text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700'"
-                @click="paramFilter = opt.key"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
+              {{ opt.label }}
+            </button>
           </div>
-        </div>
+        </template>
 
         <div
           v-if="!visibleParamsBase.length"
@@ -378,7 +374,10 @@
               <tr
                 v-for="row in filteredParams"
                 :key="'p-' + row.name"
-                class="border-t border-surface-200 dark:border-surface-700 align-top"
+                class="border-t border-surface-200 dark:border-surface-700 align-top
+                       cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-800/60"
+                title="Open Params on the matching request"
+                @click="openDiffRow('params', row)"
               >
                 <td class="px-2 py-1.5">
                   <span
@@ -414,17 +413,15 @@
             </tbody>
           </table>
         </div>
-      </div>
+      </CompareSection>
 
       <!-- SQL diff -->
-      <div class="space-y-2">
-        <div class="flex flex-wrap items-center gap-2 justify-between">
-          <h3 class="text-xs font-bold uppercase tracking-wide text-surface-600 dark:text-surface-300">
-            SQL patterns
-            <span class="font-normal normal-case tracking-normal text-surface-400">
-              ({{ filteredSql.length }}/{{ result.sqlDiff.length }})
-            </span>
-          </h3>
+      <CompareSection
+        v-model="sectionOpen.sql"
+        title="SQL patterns"
+        :count-label="`${filteredSql.length}/${result.sqlDiff.length}`"
+      >
+        <template #actions>
           <div class="inline-flex flex-wrap gap-0.5 rounded border border-surface-200 dark:border-surface-700 p-0.5">
             <button
               v-for="opt in sqlFilters"
@@ -439,7 +436,7 @@
               {{ opt.label }}
             </button>
           </div>
-        </div>
+        </template>
 
         <div
           v-if="!result.sqlDiff.length"
@@ -459,9 +456,11 @@
           state-key="rp-compare-sql-v1"
           item-header="Pattern"
           item-field="pattern"
+          title="Click a row to open it in Database (B when both sides)"
+          @row-click="(row) => openDiffRow('sql', row)"
         >
           <template #side="{ data }">
-            <div class="inline-flex items-center gap-0.5 flex-nowrap">
+            <div class="inline-flex items-center gap-1.5 flex-nowrap">
               <span
                 class="shrink-0 rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide"
                 :class="sideBadgeClass(data)"
@@ -482,38 +481,28 @@
             </div>
           </template>
           <template #item="{ data }">
-            <div
-              class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 min-w-0"
-              :title="data.sample || data.pattern"
-            >
-              <span
+            <div class="min-w-0 space-y-0.5" :title="data.sample || data.pattern">
+              <div
                 v-if="data.type"
-                class="shrink-0 text-[10px] font-medium text-surface-500 dark:text-surface-400"
-              >{{ data.type }}</span>
-              <span
-                v-if="data.type"
-                class="shrink-0 text-surface-300 dark:text-surface-600"
-                aria-hidden="true"
-              >·</span>
+                class="text-[10px] font-medium text-surface-500 dark:text-surface-400"
+              >{{ data.type }}</div>
               <pre
-                class="hljs min-w-0 flex-1 basis-[12rem] whitespace-pre-wrap break-words
+                class="hljs min-w-0 whitespace-pre-wrap break-words
                        font-mono text-[10px] leading-snug m-0 bg-transparent"
                 v-html="highlightSql(data.sample || data.pattern)"
               ></pre>
             </div>
           </template>
         </CompareTimedDiffTable>
-      </div>
+      </CompareSection>
 
       <!-- Cache diff -->
-      <div class="space-y-2">
-        <div class="flex flex-wrap items-center gap-2 justify-between">
-          <h3 class="text-xs font-bold uppercase tracking-wide text-surface-600 dark:text-surface-300">
-            Cache keys
-            <span class="font-normal normal-case tracking-normal text-surface-400">
-              ({{ filteredCache.length }}/{{ result.cacheDiff.length }})
-            </span>
-          </h3>
+      <CompareSection
+        v-model="sectionOpen.cache"
+        title="Cache keys"
+        :count-label="`${filteredCache.length}/${result.cacheDiff.length}`"
+      >
+        <template #actions>
           <div class="inline-flex flex-wrap gap-0.5 rounded border border-surface-200 dark:border-surface-700 p-0.5">
             <button
               v-for="opt in cacheFilters"
@@ -528,7 +517,7 @@
               {{ opt.label }}
             </button>
           </div>
-        </div>
+        </template>
 
         <div
           v-if="!result.cacheDiff.length"
@@ -549,9 +538,11 @@
           item-header="Key"
           item-field="key"
           show-hits
+          title="Click a row to open it in Cache"
+          @row-click="(row) => openDiffRow('cache', row)"
         >
           <template #side="{ data }">
-            <div class="inline-flex items-center gap-0.5 flex-nowrap">
+            <div class="inline-flex items-center gap-1.5 flex-nowrap">
               <span
                 class="shrink-0 rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide"
                 :class="sideBadgeClass(data)"
@@ -565,38 +556,28 @@
             </div>
           </template>
           <template #item="{ data }">
-            <div
-              class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 min-w-0"
-              :title="data.key"
-            >
-              <span
+            <div class="min-w-0 space-y-0.5" :title="data.key">
+              <div
                 v-if="data.kind || data.typeSummary"
-                class="shrink-0 text-[10px] font-medium text-surface-500 dark:text-surface-400"
-              >{{ data.kind || data.typeSummary }}</span>
-              <span
-                v-if="data.kind || data.typeSummary"
-                class="shrink-0 text-surface-300 dark:text-surface-600"
-                aria-hidden="true"
-              >·</span>
+                class="text-[10px] font-medium text-surface-500 dark:text-surface-400"
+              >{{ data.kind || data.typeSummary }}</div>
               <code
-                class="min-w-0 flex-1 basis-[12rem] whitespace-pre-wrap break-all
+                class="block min-w-0 whitespace-pre-wrap break-all
                        font-mono text-[10px] leading-snug
                        text-surface-800 dark:text-surface-200"
               >{{ data.key }}</code>
             </div>
           </template>
         </CompareTimedDiffTable>
-      </div>
+      </CompareSection>
 
       <!-- Views diff -->
-      <div class="space-y-2">
-        <div class="flex flex-wrap items-center gap-2 justify-between">
-          <h3 class="text-xs font-bold uppercase tracking-wide text-surface-600 dark:text-surface-300">
-            Views / partials
-            <span class="font-normal normal-case tracking-normal text-surface-400">
-              ({{ filteredViews.length }}/{{ result.viewDiff.length }})
-            </span>
-          </h3>
+      <CompareSection
+        v-model="sectionOpen.views"
+        title="Views / partials"
+        :count-label="`${filteredViews.length}/${result.viewDiff.length}`"
+      >
+        <template #actions>
           <div class="inline-flex flex-wrap gap-0.5 rounded border border-surface-200 dark:border-surface-700 p-0.5">
             <button
               v-for="opt in timedFilters"
@@ -611,7 +592,7 @@
               {{ opt.label }}
             </button>
           </div>
-        </div>
+        </template>
 
         <div
           v-if="!result.viewDiff.length"
@@ -631,54 +612,129 @@
           state-key="rp-compare-views-v1"
           item-header="Template"
           item-field="path"
+          title="Click a row to open it in Rendering"
+          @row-click="(row) => openDiffRow('view', row)"
         >
           <template #item="{ data }">
-            <div
-              class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 min-w-0"
-              :title="data.path"
-            >
-              <span
+            <div class="min-w-0 space-y-0.5" :title="data.path">
+              <div
                 v-if="data.kind || data.typeSummary"
-                class="shrink-0 text-[10px] font-medium text-surface-500 dark:text-surface-400"
-              >{{ data.kind || data.typeSummary }}</span>
-              <span
-                v-if="data.kind || data.typeSummary"
-                class="shrink-0 text-surface-300 dark:text-surface-600"
-                aria-hidden="true"
-              >·</span>
-              <span class="min-w-0 flex-1 basis-[12rem] break-all leading-snug">
+                class="text-[10px] font-medium text-surface-500 dark:text-surface-400"
+              >{{ data.kind || data.typeSummary }}</div>
+              <div class="min-w-0 break-all leading-snug">
                 <FilepathLink :filepath="data.path" :truncate="false" />
-              </span>
+              </div>
             </div>
           </template>
         </CompareTimedDiffTable>
-      </div>
+      </CompareSection>
 
       <!-- Exception diff -->
-      <DiffCountSection
+      <CompareSection
+        v-model="sectionOpen.exceptions"
         title="Exceptions"
-        empty="No exceptions on either request."
         tone="danger"
-        :rows="filteredExceptions"
-        :total="result.exceptionDiff.length"
-        :filter="exceptionFilter"
-        :filters="countFilters"
-        key-field="label"
-        @update:filter="exceptionFilter = $event"
-      />
+        :count-label="`${filteredExceptions.length}/${result.exceptionDiff.length}`"
+      >
+        <template #actions>
+          <div
+            class="inline-flex flex-wrap gap-0.5 rounded border p-0.5
+                   border-red-500/35 dark:border-red-500/40"
+          >
+            <button
+              v-for="opt in countFilters"
+              :key="opt.key"
+              type="button"
+              class="rounded px-1.5 py-0.5 text-[10px] font-medium cursor-pointer select-none transition-colors"
+              :class="exceptionFilter === opt.key
+                ? 'bg-red-500/15 text-red-800 dark:text-red-200'
+                : 'text-red-700 dark:text-red-300 hover:bg-red-500/10'"
+              @click="exceptionFilter = opt.key"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </template>
+
+        <div
+          v-if="!result.exceptionDiff.length"
+          class="text-xs text-red-600/70 dark:text-red-400/70 py-3 text-center"
+        >
+          No exceptions on either request.
+        </div>
+        <div
+          v-else-if="!filteredExceptions.length"
+          class="text-xs text-red-600/70 dark:text-red-400/70 py-3 text-center"
+        >
+          No rows match this filter.
+        </div>
+        <div
+          v-else
+          class="overflow-x-auto rounded border
+                 border-red-500/35 dark:border-red-500/40 bg-red-600/5 dark:bg-red-500/10"
+        >
+          <table class="w-full text-left text-[11px] border-collapse">
+            <thead>
+              <tr class="bg-red-600 dark:bg-red-500 text-white">
+                <th class="px-2 py-1.5 font-semibold w-14">Side</th>
+                <th class="px-2 py-1.5 font-semibold">Message</th>
+                <th class="px-2 py-1.5 font-semibold text-right whitespace-nowrap">Count</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(row, idx) in filteredExceptions"
+                :key="'ex-' + row.label + idx"
+                class="align-top cursor-pointer border-t border-red-500/20 dark:border-red-400/20
+                       hover:bg-red-500/10"
+                title="Click to open in Error"
+                @click="openDiffRow('exception', row)"
+              >
+                <td class="px-2 py-1.5">
+                  <span
+                    class="inline-block rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide"
+                    :class="exceptionSideBadgeClass(row)"
+                  >{{ sideLabel(row) }}</span>
+                </td>
+                <td class="px-2 py-1.5 min-w-0">
+                  <code
+                    class="block font-mono text-[10px] leading-snug whitespace-pre-wrap break-words
+                           text-red-800 dark:text-red-200"
+                    :title="stripAnsi(row.sample || row.label || '')"
+                    v-html="ansiToHtml(row.sample || row.label || '')"
+                  ></code>
+                </td>
+                <td class="px-2 py-1.5 text-right tabular-nums whitespace-nowrap text-red-800 dark:text-red-200">
+                  <span>{{ row.countA }} → {{ row.countB }}</span>
+                  <div
+                    class="text-[10px] font-medium"
+                    :class="row.deltaCount > 0
+                      ? 'text-red-700 dark:text-red-300'
+                      : row.deltaCount < 0
+                        ? 'text-emerald-700 dark:text-emerald-400'
+                        : 'text-red-500/70 dark:text-red-400/60'"
+                  >{{ formatSignedCount(row.deltaCount) }}</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </CompareSection>
     </template>
   </div>
 </template>
 
 <script setup>
-import { computed, defineComponent, h, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import hljs from 'highlight.js/lib/core'
 import sql from 'highlight.js/lib/languages/sql'
 import { prettyPrintJson } from 'pretty-print-json'
 import { useEventsStore } from '../stores/events'
+import { useSettingsStore } from '../stores/settings'
 import { copyText } from './utils/clipboard'
 import { ansiToHtml, stripAnsi } from './utils/ansi'
 import CompareTimedDiffTable from './CompareTimedDiffTable.vue'
+import CompareSection from './CompareSection.vue'
 import FilepathLink from './FilepathLink.vue'
 
 hljs.registerLanguage('sql', sql)
@@ -692,12 +748,20 @@ const prettyOptions = {
 }
 
 const store = useEventsStore()
+const settings = useSettingsStore()
 const sqlFilter = ref('diff')
 const paramFilter = ref('diff')
 const cacheFilter = ref('diff')
 const viewFilter = ref('diff')
 const exceptionFilter = ref('diff')
 const hideFrameworkParams = ref(true)
+const sectionOpen = reactive({
+  params: true,
+  sql: true,
+  cache: true,
+  views: true,
+  exceptions: true,
+})
 const ioMessage = ref('')
 const ioError = ref(false)
 let ioTimer = null
@@ -720,7 +784,7 @@ const sqlFilters = [
   { key: 'slower', label: 'Slower' },
   { key: 'faster', label: 'Faster' },
   { key: 'n1', label: 'N+1' },
-  { key: 'filter', label: 'F?' },
+  { key: 'filter', label: 'Filter?' },
 ]
 
 const paramFilters = [
@@ -813,11 +877,11 @@ const filteredSql = computed(() => {
   const rows = result.value?.sqlDiff || []
   switch (sqlFilter.value) {
     case 'diff':
-      // Structural SQL only — ignore timing noise
       return rows.filter(
         (r) =>
           r.side !== 'both' ||
           r.deltaCount !== 0 ||
+          isSignificantTimeDelta(r) ||
           r.isNPlusOneA !== r.isNPlusOneB
       )
     case 'added':
@@ -825,9 +889,9 @@ const filteredSql = computed(() => {
     case 'removed':
       return rows.filter((r) => r.side === 'onlyA')
     case 'slower':
-      return rows.filter((r) => r.side === 'both' && r.deltaTime > 0.05)
+      return rows.filter((r) => r.side === 'both' && isSlower(r))
     case 'faster':
-      return rows.filter((r) => r.side === 'both' && r.deltaTime < -0.05)
+      return rows.filter((r) => r.side === 'both' && isFaster(r))
     case 'n1':
       return rows.filter((r) => r.isNPlusOne)
     case 'filter':
@@ -837,21 +901,44 @@ const filteredSql = computed(() => {
   }
 })
 
+/** |Δtime| must beat max(ms floor, % of the larger side time). */
+function timeDeltaThreshold(row) {
+  const ms = Math.max(0, Number(settings.compareDiffMs) || 0)
+  const pct = Math.max(0, Number(settings.compareDiffPct) || 0) / 100
+  const ref = Math.max(Number(row.timeA) || 0, Number(row.timeB) || 0)
+  return Math.max(ms, pct * ref)
+}
+
+function isSignificantTimeDelta(row) {
+  return Math.abs(Number(row.deltaTime) || 0) > timeDeltaThreshold(row)
+}
+
+function isSlower(row) {
+  return (Number(row.deltaTime) || 0) > timeDeltaThreshold(row)
+}
+
+function isFaster(row) {
+  return (Number(row.deltaTime) || 0) < -timeDeltaThreshold(row)
+}
+
 function filterTimed(rows, filter) {
   switch (filter) {
     case 'diff':
-      // Presence / count / hit changes — not time
       return rows.filter(
-        (r) => r.side !== 'both' || r.deltaCount !== 0 || r.hitChanged
+        (r) =>
+          r.side !== 'both' ||
+          r.deltaCount !== 0 ||
+          isSignificantTimeDelta(r) ||
+          r.hitChanged
       )
     case 'added':
       return rows.filter((r) => r.side === 'onlyB')
     case 'removed':
       return rows.filter((r) => r.side === 'onlyA')
     case 'slower':
-      return rows.filter((r) => r.side === 'both' && r.deltaTime > 0.05)
+      return rows.filter((r) => r.side === 'both' && isSlower(r))
     case 'faster':
-      return rows.filter((r) => r.side === 'both' && r.deltaTime < -0.05)
+      return rows.filter((r) => r.side === 'both' && isFaster(r))
     case 'hits':
       return rows.filter((r) => r.hitChanged)
     default:
@@ -906,6 +993,10 @@ function flashIo(message, isError = false) {
 
 function openSide(side, tab) {
   store.openCompareSide(side, tab)
+}
+
+function openDiffRow(kind, row) {
+  store.openCompareDiffRow(kind, row)
 }
 
 async function onCopyText() {
@@ -1008,6 +1099,16 @@ function sideBadgeClass(row) {
   return 'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-300'
 }
 
+function exceptionSideBadgeClass(row) {
+  if (row.side === 'onlyA') {
+    return 'bg-red-600/15 text-red-800 dark:text-red-200 ring-1 ring-red-500/35'
+  }
+  if (row.side === 'onlyB') {
+    return 'bg-red-600 text-white dark:bg-red-500'
+  }
+  return 'bg-red-500/10 text-red-700 dark:text-red-300 ring-1 ring-red-500/25'
+}
+
 function paramSideLabel(row) {
   if (row.side === 'onlyA') return 'A'
   if (row.side === 'onlyB') return 'B'
@@ -1066,188 +1167,4 @@ function highlightSql(query) {
   }
 }
 
-/** Compact count-only diff (exceptions). */
-const DiffCountSection = defineComponent({
-  name: 'DiffCountSection',
-  props: {
-    title: String,
-    empty: String,
-    rows: { type: Array, default: () => [] },
-    total: { type: Number, default: 0 },
-    filter: String,
-    filters: { type: Array, default: () => [] },
-    keyField: { type: String, default: 'message' },
-    tone: { type: String, default: 'default' }, // 'default' | 'danger'
-  },
-  emits: ['update:filter'],
-  setup(props, { emit }) {
-    return () => {
-      const danger = props.tone === 'danger'
-      const header = h('div', { class: 'flex flex-wrap items-center gap-2 justify-between' }, [
-        h('h3', {
-          class: [
-            'text-xs font-bold uppercase tracking-wide',
-            danger
-              ? 'text-red-700 dark:text-red-400'
-              : 'text-surface-600 dark:text-surface-300',
-          ],
-        }, [
-          props.title,
-          ' ',
-          h('span', {
-            class: [
-              'font-normal normal-case tracking-normal',
-              danger ? 'text-red-500/70 dark:text-red-400/60' : 'text-surface-400',
-            ],
-          }, `(${props.rows.length}/${props.total})`),
-        ]),
-        h(
-          'div',
-          {
-            class: [
-              'inline-flex flex-wrap gap-0.5 rounded border p-0.5',
-              danger
-                ? 'border-red-500/35 dark:border-red-500/40'
-                : 'border-surface-200 dark:border-surface-700',
-            ],
-          },
-          props.filters.map((opt) =>
-            h(
-              'button',
-              {
-                type: 'button',
-                class: [
-                  'rounded px-1.5 py-0.5 text-[10px] font-medium cursor-pointer select-none transition-colors',
-                  props.filter === opt.key
-                    ? (danger
-                      ? 'bg-red-500/15 text-red-800 dark:text-red-200'
-                      : 'bg-primary-500/15 text-primary-800 dark:text-primary-200')
-                    : (danger
-                      ? 'text-red-700 dark:text-red-300 hover:bg-red-500/10'
-                      : 'text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700'),
-                ],
-                onClick: () => emit('update:filter', opt.key),
-              },
-              opt.label
-            )
-          )
-        ),
-      ])
-
-      const sideBadge = (row) => {
-        if (danger) {
-          if (row.side === 'onlyA') {
-            return 'bg-red-600/15 text-red-800 dark:text-red-200 ring-1 ring-red-500/35'
-          }
-          if (row.side === 'onlyB') {
-            return 'bg-red-600 text-white dark:bg-red-500'
-          }
-          return 'bg-red-500/10 text-red-700 dark:text-red-300 ring-1 ring-red-500/25'
-        }
-        return sideBadgeClass(row)
-      }
-
-      let body
-      if (!props.total) {
-        body = h('div', {
-          class: [
-            'text-xs py-3 text-center',
-            danger ? 'text-red-600/70 dark:text-red-400/70' : 'text-surface-500 dark:text-surface-400',
-          ],
-        }, props.empty)
-      } else if (!props.rows.length) {
-        body = h('div', {
-          class: [
-            'text-xs py-3 text-center',
-            danger ? 'text-red-600/70 dark:text-red-400/70' : 'text-surface-500 dark:text-surface-400',
-          ],
-        }, 'No rows match this filter.')
-      } else {
-        body = h('div', {
-          class: [
-            'overflow-x-auto rounded border',
-            danger
-              ? 'border-red-500/35 dark:border-red-500/40 bg-red-600/5 dark:bg-red-500/10'
-              : 'border-surface-200 dark:border-surface-700',
-          ],
-        }, [
-          h('table', { class: 'w-full text-left text-[11px] border-collapse' }, [
-            h('thead', [
-              h('tr', {
-                class: danger
-                  ? 'bg-red-600 dark:bg-red-500 text-white'
-                  : 'bg-surface-50 dark:bg-surface-900/60 text-surface-600 dark:text-surface-300',
-              }, [
-                h('th', { class: 'px-2 py-1.5 font-semibold w-14' }, 'Side'),
-                h('th', { class: 'px-2 py-1.5 font-semibold' }, 'Message'),
-                h('th', { class: 'px-2 py-1.5 font-semibold text-right whitespace-nowrap' }, 'Count'),
-              ]),
-            ]),
-            h(
-              'tbody',
-              props.rows.map((row, idx) =>
-                h('tr', {
-                  key: String(row[props.keyField]) + idx,
-                  class: [
-                    'align-top',
-                    danger
-                      ? 'border-t border-red-500/20 dark:border-red-400/20'
-                      : 'border-t border-surface-200 dark:border-surface-700',
-                  ],
-                }, [
-                  h('td', { class: 'px-2 py-1.5' }, [
-                    h('span', {
-                      class: [
-                        'inline-block rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide',
-                        sideBadge(row),
-                      ],
-                    }, sideLabel(row)),
-                  ]),
-                  h('td', { class: 'px-2 py-1.5 min-w-0' }, [
-                    (() => {
-                      const raw = row.sample || row[props.keyField] || ''
-                      const plain = stripAnsi(raw)
-                      return h('code', {
-                        class: [
-                          'block font-mono text-[10px] leading-snug whitespace-pre-wrap break-words',
-                          danger
-                            ? 'text-red-800 dark:text-red-200'
-                            : 'text-surface-800 dark:text-surface-200',
-                        ],
-                        title: plain,
-                        innerHTML: ansiToHtml(raw),
-                      })
-                    })(),
-                  ]),
-                  h('td', {
-                    class: [
-                      'px-2 py-1.5 text-right tabular-nums whitespace-nowrap',
-                      danger ? 'text-red-800 dark:text-red-200' : '',
-                    ],
-                  }, [
-                    h('span', null, `${row.countA} → ${row.countB}`),
-                    h('div', {
-                      class: [
-                        'text-[10px] font-medium',
-                        danger
-                          ? (row.deltaCount > 0
-                            ? 'text-red-700 dark:text-red-300'
-                            : row.deltaCount < 0
-                              ? 'text-emerald-700 dark:text-emerald-400'
-                              : 'text-red-500/70 dark:text-red-400/60')
-                          : deltaClass(row.deltaCount),
-                      ],
-                    }, formatSignedCount(row.deltaCount)),
-                  ]),
-                ])
-              )
-            ),
-          ]),
-        ])
-      }
-
-      return h('div', { class: 'space-y-2' }, [header, body])
-    }
-  },
-})
 </script>

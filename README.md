@@ -9,7 +9,8 @@ RailsPanel is a Chrome extension for Rails development that will end your tailin
 
 - **Timeline** — waterfall of the request with Slow / Heavy / Gap markers
 - **N+1 detection** — repeated SQL patterns called out in Database and Compare
-- **Compare (A/B)** — baseline vs candidate request: params, SQL, cache, views, exceptions, metrics, and synced waterfalls (see [CHANGELOG](CHANGELOG.md))
+- **Compare (A/B)** — baseline vs candidate: params, SQL, cache, views, exceptions; click a row to jump into the detail tab with highlight; collapsible sections
+- **Compare time noise** — configurable ms / % threshold for Diff / Slower / Faster (Settings)
 - **Share requests** — copy/export and import requests (including external captures)
 - **Syntax highlighting** — SQL and params colored in detail views and Compare
 

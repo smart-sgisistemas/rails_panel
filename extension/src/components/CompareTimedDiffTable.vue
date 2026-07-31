@@ -1,18 +1,23 @@
 <template>
-  <div class="w-full min-w-0 rounded border border-surface-200 dark:border-surface-700 overflow-hidden">
+  <div
+    class="w-full min-w-0 rounded border border-surface-200 dark:border-surface-700 overflow-hidden"
+    :title="title"
+  >
     <DetailsTable
       :value="value"
       dataKey="_key"
       :state-key="stateKey"
       sortMode="single"
       removableSort
-      class="!h-auto"
+      rowHover
+      class="!h-auto cursor-pointer"
+      @row-click="onRowClick"
     >
       <Column
         sortable
         field="_sideRank"
         header="Side"
-        :style="colFit"
+        :style="sideCol"
       >
         <template #body="slotProps">
           <slot name="side" :data="slotProps.data">
@@ -128,7 +133,21 @@ defineProps({
   itemHeader: { type: String, default: 'Item' },
   itemField: { type: String, default: 'key' },
   showHits: { type: Boolean, default: false },
+  title: { type: String, default: 'Click a row to open the matching detail tab' },
 })
+
+const emit = defineEmits(['row-click'])
+
+function onRowClick(event) {
+  emit('row-click', event?.data || event)
+}
+
+const sideCol = {
+  width: '1%',
+  whiteSpace: 'nowrap',
+  overflow: 'visible',
+  verticalAlign: 'middle',
+}
 
 const colFit = {
   width: '1%',

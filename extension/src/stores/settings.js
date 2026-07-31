@@ -11,6 +11,8 @@ const DEFAULTS = {
   idleGapMs: 150,
   idleGapPct: 8,
   nPlusOneMin: 3,
+  compareDiffMs: 1,
+  compareDiffPct: 5,
 }
 
 function readBool(key, fallback = false) {
@@ -86,6 +88,13 @@ export const useSettingsStore = defineStore('settings', () => {
     clampInt(readNumber('railspanel.nPlusOneMin', DEFAULTS.nPlusOneMin), 2, 50, DEFAULTS.nPlusOneMin)
   )
 
+  const compareDiffMs = ref(
+    clampInt(readNumber('railspanel.compareDiffMs', DEFAULTS.compareDiffMs), 0, 1000, DEFAULTS.compareDiffMs)
+  )
+  const compareDiffPct = ref(
+    clampInt(readNumber('railspanel.compareDiffPct', DEFAULTS.compareDiffPct), 0, 50, DEFAULTS.compareDiffPct)
+  )
+
   watch(editor, (newVal) => {
     localStorage.setItem('railspanel.editor', newVal.id)
   })
@@ -104,6 +113,8 @@ export const useSettingsStore = defineStore('settings', () => {
   watchInt(idleGapMs, 'railspanel.idleGapMs', { min: 20, max: 10000, fallback: DEFAULTS.idleGapMs })
   watchInt(idleGapPct, 'railspanel.idleGapPct', { min: 1, max: 50, fallback: DEFAULTS.idleGapPct })
   watchInt(nPlusOneMin, 'railspanel.nPlusOneMin', { min: 2, max: 50, fallback: DEFAULTS.nPlusOneMin })
+  watchInt(compareDiffMs, 'railspanel.compareDiffMs', { min: 0, max: 1000, fallback: DEFAULTS.compareDiffMs })
+  watchInt(compareDiffPct, 'railspanel.compareDiffPct', { min: 0, max: 50, fallback: DEFAULTS.compareDiffPct })
 
   return {
     editors,
@@ -116,5 +127,7 @@ export const useSettingsStore = defineStore('settings', () => {
     idleGapMs,
     idleGapPct,
     nPlusOneMin,
+    compareDiffMs,
+    compareDiffPct,
   }
 })

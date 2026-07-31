@@ -5,6 +5,39 @@ All notable changes to the **Rails Panel** Chrome extension are documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] — 2026-07-31
+
+### Added
+
+- **Click-through from Compare** — click a Params / SQL / Cache / Views / Exceptions row to open the matching detail tab on A or B, with the same highlight + scroll behavior as Timeline
+- **Collapsible Compare sections** — Params, SQL, Cache, Views, and Exceptions collapse/expand while keeping the `(filtered/total)` count in the header
+- **Compare time noise settings** — Settings → *Compare time noise*:
+  - Diff / Slower / Faster use `|Δ| > max(ms, % × max(time A, time B))`
+  - Defaults: `1` ms and `5%`
+
+### Changed
+
+- Compare **Diff** filter includes significant time deltas (not only add/remove/count)
+- SQL / Cache / Views item layout: type/name on its own line above the value
+- Filter chip label **Filter?** (row badge stays **F?**)
+- Side badges vertically centered with more spacing between badges
+
+### Examples
+
+#### Jump from Compare into Database
+
+1. Open Compare with A/B set.
+2. Click a SQL row (e.g. a slower `User Load` pattern).
+3. Panel switches to **Database** on request B (or A if only-A) and highlights matching queries.
+
+#### Tune Diff noise
+
+Settings → Compare time noise → raise **≥ ms** to `5` and/or **≥ %** to `10` so tiny timing jitter drops out of Diff / Slower / Faster.
+
+#### Collapse long Compare pages
+
+Click the chevron next to **SQL patterns (12/40)** to hide the table; the count stays visible.
+
 ## [2.3.0] — 2026-07-31
 
 ### Added
@@ -84,5 +117,6 @@ Filter Cache with **Hits** to see only keys whose hit/miss mix changed (`hitΔ`)
 
 Earlier Chrome Web Store / classic extension builds. See git history for details.
 
+[2.4.0]: https://github.com/smart-sgisistemas/rails_panel/releases/tag/v2.4.0
 [2.3.0]: https://github.com/smart-sgisistemas/rails_panel/releases/tag/v2.3.0
 [2.0.0]: https://github.com/smart-sgisistemas/rails_panel/releases/tag/v2.0.0
