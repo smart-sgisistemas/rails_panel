@@ -30,8 +30,8 @@
         <template #body="slotProps">
           <div
             class="truncate"
-            :title="slotProps.data.message"
-            v-html="convert.toHtml(slotProps.data.message)"
+            :title="plainMessage(slotProps.data.message)"
+            v-html="ansiToHtml(slotProps.data.message)"
           ></div>
         </template>
       </Column>
@@ -54,14 +54,17 @@ import { computed } from 'vue'
 import { useEventsStore } from '../stores/events';
 import Column from 'primevue/column';
 import DetailsTable from './wrappers/DetailsTable.vue';
-import Convert from 'ansi-to-html'
 import FilepathLink from './FilepathLink.vue'
 import DetailSearch from './DetailSearch.vue'
-import { colFit, colFitMax, colFill } from './utils/columns';
+import { colFit, colFitMax, colFill } from './utils/columns'
 import { includesText, useDetailSearch } from './utils/useDetailSearch'
+import { ansiToHtml, stripAnsi } from './utils/ansi'
 
-var convert = new Convert();
 const store = useEventsStore()
+
+function plainMessage(message) {
+  return stripAnsi(message)
+}
 
 const allRows = computed(() =>
   (store.selectedLogEntries || []).map((row, index) => ({ ...row, _key: index }))
@@ -72,7 +75,7 @@ const { query, filteredRows, isFiltering, matchCount } = useDetailSearch(
   (row, q) =>
     includesText(row.filename, q) ||
     includesText(row.level, q) ||
-    includesText(row.message, q)
+    includesText(stripAnsi(row.message), q)
 )
 
 const centeredCol = {

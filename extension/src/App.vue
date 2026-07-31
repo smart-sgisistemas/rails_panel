@@ -29,6 +29,7 @@ onMounted(() => {
     var requestId = headers.find(function(x) { return x.name.toLowerCase() == 'x-request-id' });
     var metaRequestVersion = headers.find(function(x) { return x.name.toLowerCase() == 'x-meta-request-version' });
     if (typeof metaRequestVersion != 'undefined') {
+      if (!requestId?.value) return
       var url = new URL(request.request.url);
       url.pathname = '/__meta_request/' + requestId.value + '.json';
       url.search = "";

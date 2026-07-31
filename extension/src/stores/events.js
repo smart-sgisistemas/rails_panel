@@ -1,7 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { withExclusiveDurations, sumExclusive } from '../components/utils/timing'
-import { annotateQueryRepeats, nPlusOneGroups } from '../components/utils/sqlPatterns'
+import { annotateQueryRepeats, nPlusOneGroups, normalizeSql, isMetaSqlType } from '../components/utils/sqlPatterns'
 import { useSettingsStore } from './settings'
 
 export const useEventsStore = defineStore('events',  () => {
@@ -30,14 +30,28 @@ export const useEventsStore = defineStore('events',  () => {
   // Highlight a detail-tab row after navigating from Timeline
   const detailHighlightKeys = ref([])
 
+  /** Compare slots: A = baseline, B = candidate. */
+  const compareAId = ref(null)
+  const compareBId = ref(null)
+  /** Bumped when UI should focus the Compare tab. */
+  const compareOpenNonce = ref(0)
+
   const requests = computed(() => Array.from(actions.value.values()));
   const requestCount = computed(() => actions.value.size);
 
   function normalizeRequestId(requestId) {
     if (requestId != null && typeof requestId === 'object' && requestId.value != null) {
-      return String(requestId.value)
+      return String(requestId.value).trim()
     }
-    return String(requestId)
+    return String(requestId ?? '').trim()
+  }
+
+  function allocateRequestId(requestId) {
+    const id = normalizeRequestId(requestId)
+    if (id && id !== 'undefined' && id !== 'null') return id
+    const stamp = Date.now().toString(36)
+    const rand = Math.random().toString(36).slice(2, 8)
+    return `req:${stamp}:${rand}`
   }
 
   const selectedActiveRecordQueries = computed(() => {
@@ -89,6 +103,8 @@ export const useEventsStore = defineStore('events',  () => {
     cacheCalls.value.delete(id)
     timelineSpans.value.delete(id)
     rawEventsByRequest.value.delete(id)
+    if (compareAId.value === id) compareAId.value = null
+    if (compareBId.value === id) compareBId.value = null
   }
 
   function pruneToCap(cap) {
@@ -107,14 +123,14 @@ export const useEventsStore = defineStore('events',  () => {
   function pushEvents(requestId, newEvents, autoReselect = true, options = {}) {
     clearDetailHighlight()
     const settings = useSettingsStore()
-    const id = normalizeRequestId(requestId)
+    const id = allocateRequestId(requestId)
     const isExternal = !!options.isExternal
     const actionEvent = newEvents.find((event) => event.name == "process_action.action_controller")
     if (!actionEvent) {
       console.warn('rails_panel: skip request without process_action', id)
       return null
     }
-    const status = actionEvent.payload.status || 200
+    const status = Number(actionEvent.payload.status) || 200
     const hasException = newEvents.some(
       (event) => event.name === 'process_action.action_controller.exception'
     )
@@ -890,6 +906,7 @@ export const useEventsStore = defineStore('events',  () => {
     rawEventsByRequest.value = new Map();
     selectedRequest.value = null;
     clearDetailHighlight();
+    clearCompare();
   }
 
   /** Keep only the currently selected request; drop everything else. */
@@ -917,6 +934,775 @@ export const useEventsStore = defineStore('events',  () => {
     timelineSpans.value = pick(timelineSpans.value)
     rawEventsByRequest.value = pick(rawEventsByRequest.value)
     clearDetailHighlight()
+    if (compareAId.value && compareAId.value !== keepId) compareAId.value = null
+    if (compareBId.value && compareBId.value !== keepId) compareBId.value = null
+  }
+
+  function compareSlotFor(requestId) {
+    if (requestId == null) return null
+    const id = normalizeRequestId(
+      typeof requestId === 'object' && requestId.id != null ? requestId.id : requestId
+    )
+    if (!id) return null
+    if (compareAId.value === id) return 'A'
+    if (compareBId.value === id) return 'B'
+    return null
+  }
+
+  function clearCompare() {
+    compareAId.value = null
+    compareBId.value = null
+  }
+
+  function swapCompare() {
+    const a = compareAId.value
+    compareAId.value = compareBId.value
+    compareBId.value = a
+  }
+
+  function resolveCompareAction(input) {
+    if (input == null) return null
+
+    // Row object from the request list
+    if (typeof input === 'object' && !Array.isArray(input) && input.id != null) {
+      const id = normalizeRequestId(input.id)
+      if (id && actions.value.has(id)) return actions.value.get(id)
+      // Same object reference as stored in the Map (PrimeVue selection / row slot)
+      for (const action of actions.value.values()) {
+        if (action === input || normalizeRequestId(action.id) === id) return action
+      }
+      // Last resort: trust the row if it looks like a stored action
+      if (input.action != null || input.status != null) return input
+      return null
+    }
+
+    const id = normalizeRequestId(input)
+    if (!id) return null
+    if (actions.value.has(id)) return actions.value.get(id)
+    for (const action of actions.value.values()) {
+      if (normalizeRequestId(action.id) === id) return action
+    }
+    return null
+  }
+
+  /**
+   * Assign request to compare slot.
+   * Empty → A; A set → B (opens Compare); both set → replace B.
+   * Clicking the same slot again clears that slot.
+   * Accepts a request id or a request row object.
+   */
+  function setCompareSlot(requestIdOrAction) {
+    const action = resolveCompareAction(requestIdOrAction)
+    if (!action) return null
+    const id = normalizeRequestId(action.id)
+    if (!id) return null
+
+    // Keep Map keyed by the canonical id when we only had a loose row match.
+    if (!actions.value.has(id)) {
+      actions.value.set(id, action)
+    }
+
+    if (compareAId.value === id) {
+      compareAId.value = compareBId.value
+      compareBId.value = null
+      return { slot: null, opened: false }
+    }
+    if (compareBId.value === id) {
+      compareBId.value = null
+      return { slot: null, opened: false }
+    }
+
+    if (!compareAId.value) {
+      compareAId.value = id
+      return { slot: 'A', opened: false }
+    }
+
+    compareBId.value = id
+    compareOpenNonce.value += 1
+    return { slot: 'B', opened: true }
+  }
+
+  function summarizeForCompare(requestId) {
+    if (requestId == null) return null
+    const id = normalizeRequestId(requestId)
+    const action = actions.value.get(id)
+    if (!action) return null
+    const timeline = timelineSpans.value.get(id)
+    const queries = activeRecordQueries.value.get(id) || []
+    const views = actionViewRenders.value.get(id) || []
+    const total = Number(action.duration) || Number(timeline?.totalMs) || 0
+    const dbRuntime = Number(timeline?.dbRuntime ?? action.dbRuntime) || 0
+    const viewRuntime = Number(timeline?.viewRuntime ?? action.viewRuntime) || 0
+    const cacheRuntime = Number(timeline?.cacheRuntime) || 0
+    const otherRuntime = timeline != null
+      ? Math.max(0, Number(timeline.otherRuntime) || 0)
+      : Math.max(0, total - dbRuntime - viewRuntime - cacheRuntime)
+    const queryCount = queries.filter((q) => !isMetaSqlType(q.type)).length
+
+    return {
+      id,
+      action: action.action,
+      status: action.status,
+      method: action.method,
+      format: action.format,
+      duration: total,
+      isExternal: !!action.isExternal,
+      dbRuntime,
+      viewRuntime,
+      cacheRuntime,
+      otherRuntime,
+      queryCount,
+      nPlusOnePatterns: action.nPlusOnePatterns || 0,
+      viewCount: views.length,
+    }
+  }
+
+  function sqlPatternGroupsFor(requestId) {
+    const id = normalizeRequestId(requestId)
+    const queries = activeRecordQueries.value.get(id) || []
+    const settings = useSettingsStore()
+    const nPlusOneMin = settings.nPlusOneMin || 3
+    const map = new Map()
+    for (const q of queries) {
+      if (isMetaSqlType(q.type)) continue
+      const pattern = normalizeSql(q.query)
+      if (!pattern) continue
+      if (!map.has(pattern)) {
+        map.set(pattern, {
+          pattern,
+          sample: q.query,
+          type: q.type,
+          count: 0,
+          totalMs: 0,
+        })
+      }
+      const g = map.get(pattern)
+      g.count += 1
+      g.totalMs += Number(q.duration) || 0
+    }
+    for (const g of map.values()) {
+      g.isNPlusOne = g.count >= nPlusOneMin
+    }
+    return map
+  }
+
+  function stableParamValue(value) {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return String(value)
+    }
+  }
+
+  function formatParamDisplay(value) {
+    if (value === undefined) return '—'
+    if (typeof value === 'string') return value
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return String(value)
+    }
+  }
+
+  function buildParamsDiff(idA, idB) {
+    const paramsA = actions.value.get(idA)?.params || []
+    const paramsB = actions.value.get(idB)?.params || []
+    const mapA = new Map(paramsA.map((p) => [String(p.name), p.value]))
+    const mapB = new Map(paramsB.map((p) => [String(p.name), p.value]))
+    const names = new Set([...mapA.keys(), ...mapB.keys()])
+    const rows = []
+    for (const name of names) {
+      const hasA = mapA.has(name)
+      const hasB = mapB.has(name)
+      const valueA = hasA ? mapA.get(name) : undefined
+      const valueB = hasB ? mapB.get(name) : undefined
+      let side = 'same'
+      if (hasA && !hasB) side = 'onlyA'
+      else if (!hasA && hasB) side = 'onlyB'
+      else if (stableParamValue(valueA) !== stableParamValue(valueB)) side = 'changed'
+      rows.push({
+        name,
+        side,
+        isFramework: isFrameworkParam(name),
+        valueA: formatParamDisplay(valueA),
+        valueB: formatParamDisplay(valueB),
+        rawA: valueA,
+        rawB: valueB,
+      })
+    }
+    const sideRank = { changed: 0, onlyB: 1, onlyA: 2, same: 3 }
+    rows.sort((x, y) => (sideRank[x.side] - sideRank[y.side]) || x.name.localeCompare(y.name))
+    return rows
+  }
+
+  /** Rails / form noise that rarely explains SQL regressions. */
+  function isFrameworkParam(name) {
+    const n = String(name || '')
+    if (!n) return true
+    const lower = n.toLowerCase()
+    if (
+      lower === 'controller' ||
+      lower === 'action' ||
+      lower === 'authenticity_token' ||
+      lower === 'utf8' ||
+      lower === '_method' ||
+      lower === 'commit' ||
+      lower === 'format' ||
+      lower === 'button'
+    ) {
+      return true
+    }
+    // Rails nested authenticity / button helpers
+    if (lower.endsWith('(authenticity_token)') || lower.includes('authenticity_token')) return true
+    return false
+  }
+
+  function cacheGroupsFor(requestId) {
+    const id = normalizeRequestId(requestId)
+    const calls = cacheCalls.value.get(id) || []
+    const map = new Map()
+    for (const c of calls) {
+      const key = c.key != null && String(c.key) !== '' ? String(c.key) : '(no key)'
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          count: 0,
+          totalMs: 0,
+          hits: 0,
+          misses: 0,
+          types: new Set(),
+        })
+      }
+      const g = map.get(key)
+      g.count += 1
+      g.totalMs += Number(c.duration) || 0
+      if (c.hit === true) g.hits += 1
+      if (c.hit === false) g.misses += 1
+      if (c.type) g.types.add(String(c.type))
+    }
+    for (const g of map.values()) {
+      g.typeSummary = Array.from(g.types).sort().join(', ')
+    }
+    return map
+  }
+
+  function viewGroupsFor(requestId) {
+    const id = normalizeRequestId(requestId)
+    const views = actionViewRenders.value.get(id) || []
+    const map = new Map()
+    for (const v of views) {
+      const path = v.view != null && String(v.view) !== '' ? String(v.view) : '(unknown)'
+      if (!map.has(path)) {
+        map.set(path, {
+          path,
+          kind: v.kind || 'template',
+          count: 0,
+          totalMs: 0,
+        })
+      }
+      const g = map.get(path)
+      g.count += 1
+      const ms = Number(v.durationExclusive ?? v.duration) || 0
+      g.totalMs += ms
+      if (v.kind) g.kind = v.kind
+    }
+    return map
+  }
+
+  function exceptionGroupsFor(requestId) {
+    const id = normalizeRequestId(requestId)
+    const traces = exceptionStacktraces.value.get(id) || []
+    const map = new Map()
+    traces.forEach((t, index) => {
+      let raw = ''
+      try {
+        if (Array.isArray(t?.trace)) raw = t.trace.map((line) => String(line ?? '')).join('\n')
+        else if (t?.trace != null) raw = String(t.trace)
+      } catch {
+        raw = ''
+      }
+      const firstLine = raw.split('\n').map((l) => l.trim()).find(Boolean) || `exception #${index + 1}`
+      const key = firstLine
+      if (!map.has(key)) {
+        map.set(key, {
+          label: firstLine,
+          sample: raw.slice(0, 500),
+          count: 0,
+        })
+      }
+      map.get(key).count += 1
+    })
+    return map
+  }
+
+  function mergeCountGroups(mapA, mapB, keyField, labelField) {
+    const keys = new Set([...mapA.keys(), ...mapB.keys()])
+    const rows = []
+    for (const key of keys) {
+      const ga = mapA.get(key)
+      const gb = mapB.get(key)
+      const countA = ga?.count || 0
+      const countB = gb?.count || 0
+      let side = 'both'
+      if (ga && !gb) side = 'onlyA'
+      else if (!ga && gb) side = 'onlyB'
+      rows.push({
+        [keyField]: key,
+        [labelField]: gb?.[labelField] || ga?.[labelField] || key,
+        side,
+        countA,
+        countB,
+        deltaCount: countB - countA,
+        sample: gb?.sample || ga?.sample || '',
+        level: gb?.level ?? ga?.level,
+      })
+    }
+    rows.sort((x, y) => Math.abs(y.deltaCount) - Math.abs(x.deltaCount) || String(x[labelField]).localeCompare(String(y[labelField])))
+    return rows
+  }
+
+  function mergeTimedGroups(mapA, mapB, keyField) {
+    const keys = new Set([...mapA.keys(), ...mapB.keys()])
+    const rows = []
+    for (const key of keys) {
+      const ga = mapA.get(key)
+      const gb = mapB.get(key)
+      const countA = ga?.count || 0
+      const countB = gb?.count || 0
+      const timeA = ga?.totalMs || 0
+      const timeB = gb?.totalMs || 0
+      let side = 'both'
+      if (ga && !gb) side = 'onlyA'
+      else if (!ga && gb) side = 'onlyB'
+      rows.push({
+        [keyField]: key,
+        side,
+        countA,
+        countB,
+        timeA,
+        timeB,
+        deltaTime: timeB - timeA,
+        deltaCount: countB - countA,
+        typeSummary: gb?.typeSummary || ga?.typeSummary || '',
+        kind: gb?.kind || ga?.kind || '',
+        hitsA: ga?.hits || 0,
+        hitsB: gb?.hits || 0,
+        missesA: ga?.misses || 0,
+        missesB: gb?.misses || 0,
+        hitChanged:
+          (ga?.hits || 0) !== (gb?.hits || 0) ||
+          (ga?.misses || 0) !== (gb?.misses || 0),
+        deltaHits: (gb?.hits || 0) - (ga?.hits || 0),
+        deltaMisses: (gb?.misses || 0) - (ga?.misses || 0),
+      })
+    }
+    rows.sort((x, y) => Math.abs(y.deltaTime) - Math.abs(x.deltaTime) || Math.abs(y.deltaCount) - Math.abs(x.deltaCount))
+    return rows
+  }
+
+  function waterfallSpansFor(requestId, scaleMs) {
+    const id = normalizeRequestId(requestId)
+    const tl = timelineSpans.value.get(id)
+    const scale = Math.max(Number(scaleMs) || 0, 0.001)
+    if (!tl?.spans?.length) return []
+    return tl.spans
+      .filter((s) => s.category && s.category !== 'request')
+      .filter((s) => (s.nestDepth || 0) === 0)
+      .map((s) => {
+        const startMs = Math.max(0, Number(s.startMs) || 0)
+        const durationMs = Math.max(
+          0,
+          Number(s.durationWallMs ?? s.durationInclusiveMs ?? s.durationMs) || 0
+        )
+        const leftPct = Math.min(100, (startMs / scale) * 100)
+        const widthPct = Math.max(0.15, Math.min(100 - leftPct, (durationMs / scale) * 100))
+        return {
+          id: s.id,
+          category: s.category,
+          label: s.label || s.category,
+          detail: s.detail || '',
+          startMs,
+          durationMs,
+          leftPct,
+          widthPct,
+          hasError: !!s.hasError || s.category === 'error',
+        }
+      })
+      .filter((s) => s.durationMs > 0.05 || s.category === 'error')
+      .slice(0, 120)
+  }
+
+  function barClassForCategory(category) {
+    switch (category) {
+      case 'view':
+        return 'bg-amber-500/90 dark:bg-amber-400/90'
+      case 'db':
+        return 'bg-sky-500/90 dark:bg-sky-400/90'
+      case 'cache':
+        return 'bg-emerald-500/90 dark:bg-emerald-400/90'
+      case 'error':
+        return 'bg-red-500/90 dark:bg-red-400/90'
+      default:
+        return 'bg-surface-400/80 dark:bg-surface-500/80'
+    }
+  }
+
+  function formatSignedMsText(ms) {
+    const n = Number(ms) || 0
+    if (Math.abs(n) < 0.05) return '0 ms'
+    const sign = n > 0 ? '+' : '−'
+    const abs = Math.abs(n)
+    if (abs < 10) return `${sign}${abs.toFixed(1)} ms`
+    return `${sign}${Math.round(abs)} ms`
+  }
+
+  function formatSignedPctText(pct) {
+    const n = Number(pct) || 0
+    if (Math.abs(n) < 0.05) return '0%'
+    const sign = n > 0 ? '+' : '−'
+    return `${sign}${Math.abs(n).toFixed(0)}%`
+  }
+
+  function buildCompareSummary({ totalDelta, totalDeltaPct, paramsDiff, sqlDiff, cacheDiff, viewDiff, exceptionDiff }) {
+    const parts = []
+    parts.push(`${formatSignedMsText(totalDelta)} (${formatSignedPctText(totalDeltaPct)})`)
+
+    const meaningfulParams = paramsDiff.filter((p) => !p.isFramework && p.side !== 'same')
+    if (meaningfulParams.length) {
+      const names = meaningfulParams.slice(0, 4).map((p) => p.name)
+      const more = meaningfulParams.length > 4 ? ` +${meaningfulParams.length - 4}` : ''
+      parts.push(`params: ${names.join(', ')}${more}`)
+    }
+
+    const sqlAdded = sqlDiff.filter((r) => r.side === 'onlyB').length
+    const sqlRemoved = sqlDiff.filter((r) => r.side === 'onlyA').length
+    const n1Gone = sqlDiff.filter((r) => r.isNPlusOneA && !r.isNPlusOneB).length
+    const n1New = sqlDiff.filter((r) => !r.isNPlusOneA && r.isNPlusOneB).length
+    const sqlBits = []
+    if (sqlAdded) sqlBits.push(`${sqlAdded} added`)
+    if (sqlRemoved) sqlBits.push(`${sqlRemoved} removed`)
+    if (n1Gone) sqlBits.push(`${n1Gone} N+1 gone`)
+    if (n1New) sqlBits.push(`${n1New} N+1 new`)
+    if (sqlBits.length) parts.push(`SQL: ${sqlBits.join(', ')}`)
+
+    const cacheAdded = cacheDiff.filter((r) => r.side === 'onlyB').length
+    const cacheRemoved = cacheDiff.filter((r) => r.side === 'onlyA').length
+    const cacheHits = cacheDiff.filter((r) => r.hitChanged).length
+    if (cacheAdded || cacheRemoved || cacheHits) {
+      const bits = []
+      if (cacheAdded) bits.push(`${cacheAdded} added`)
+      if (cacheRemoved) bits.push(`${cacheRemoved} removed`)
+      if (cacheHits) bits.push(`${cacheHits} hitΔ`)
+      parts.push(`cache: ${bits.join(', ')}`)
+    }
+
+    const viewAdded = viewDiff.filter((r) => r.side === 'onlyB').length
+    const viewRemoved = viewDiff.filter((r) => r.side === 'onlyA').length
+    if (viewAdded || viewRemoved) {
+      const bits = []
+      if (viewAdded) bits.push(`${viewAdded} added`)
+      if (viewRemoved) bits.push(`${viewRemoved} removed`)
+      parts.push(`views: ${bits.join(', ')}`)
+    }
+
+    const exChanged = exceptionDiff.filter((r) => r.side !== 'both' || r.deltaCount !== 0).length
+    if (exChanged) parts.push(`errors: ${exChanged} changed`)
+
+    return {
+      text: parts.join(' · '),
+      parts,
+      meaningfulParamNames: meaningfulParams.map((p) => p.name),
+    }
+  }
+
+  function deltaNum(a, b) {
+    return (Number(b) || 0) - (Number(a) || 0)
+  }
+
+  function deltaPct(a, b) {
+    const base = Number(a) || 0
+    if (base === 0) {
+      const next = Number(b) || 0
+      if (next === 0) return 0
+      return next > 0 ? 100 : -100
+    }
+    return ((Number(b) || 0) - base) / base * 100
+  }
+
+  const compareReady = computed(() => !!(compareAId.value && compareBId.value))
+
+  /** Requested by Compare "Open A/B" — DetailsTabView watches this. */
+  const pendingDetailTab = ref(null)
+  const detailTabNonce = ref(0)
+
+  function openCompareSide(side, tab = 'params') {
+    const id = side === 'B' ? compareBId.value : compareAId.value
+    if (!id) return false
+    const action = actions.value.get(normalizeRequestId(id))
+    if (!action) return false
+    selectedRequest.value = action
+    pendingDetailTab.value = tab
+    detailTabNonce.value += 1
+    return true
+  }
+
+  const compareResult = computed(() => {
+    try {
+      return buildCompareResult()
+    } catch (err) {
+      console.warn('rails_panel: compareResult failed', err)
+      return null
+    }
+  })
+
+  function buildCompareResult() {
+    if (!compareAId.value || !compareBId.value) return null
+    const a = summarizeForCompare(compareAId.value)
+    const b = summarizeForCompare(compareBId.value)
+    if (!a || !b) return null
+
+    const cacheA = cacheGroupsFor(a.id)
+    const cacheB = cacheGroupsFor(b.id)
+    const cacheCountA = Array.from(cacheA.values()).reduce((acc, g) => acc + g.count, 0)
+    const cacheCountB = Array.from(cacheB.values()).reduce((acc, g) => acc + g.count, 0)
+
+    const exA = exceptionGroupsFor(a.id)
+    const exB = exceptionGroupsFor(b.id)
+    const exCountA = Array.from(exA.values()).reduce((acc, g) => acc + g.count, 0)
+    const exCountB = Array.from(exB.values()).reduce((acc, g) => acc + g.count, 0)
+
+    const scaleMs = Math.max(a.duration, b.duration, 0.001)
+    const metrics = [
+      { key: 'total', label: 'Total', a: a.duration, b: b.duration },
+      { key: 'db', label: 'DB', a: a.dbRuntime, b: b.dbRuntime },
+      { key: 'view', label: 'View', a: a.viewRuntime, b: b.viewRuntime },
+      { key: 'cache', label: 'Cache', a: a.cacheRuntime, b: b.cacheRuntime },
+      { key: 'other', label: 'Other', a: a.otherRuntime, b: b.otherRuntime },
+      { key: 'queries', label: '# queries', a: a.queryCount, b: b.queryCount, unit: 'count' },
+      { key: 'n1', label: '# N+1 patterns', a: a.nPlusOnePatterns, b: b.nPlusOnePatterns, unit: 'count' },
+      { key: 'views', label: '# views', a: a.viewCount, b: b.viewCount, unit: 'count' },
+      { key: 'cacheCalls', label: '# cache calls', a: cacheCountA, b: cacheCountB, unit: 'count' },
+      { key: 'errors', label: '# exceptions', a: exCountA, b: exCountB, unit: 'count' },
+    ].map((row) => ({
+      ...row,
+      delta: deltaNum(row.a, row.b),
+      deltaPct: row.unit === 'count' ? null : deltaPct(row.a, row.b),
+    }))
+
+    const paramsDiff = buildParamsDiff(a.id, b.id)
+    const meaningfulParamDiff = paramsDiff.some((p) => !p.isFramework && p.side !== 'same')
+    const meaningfulParamNames = paramsDiff
+      .filter((p) => !p.isFramework && p.side !== 'same')
+      .map((p) => p.name)
+
+    const groupsA = sqlPatternGroupsFor(a.id)
+    const groupsB = sqlPatternGroupsFor(b.id)
+    const patterns = new Set([...groupsA.keys(), ...groupsB.keys()])
+    const sqlDiff = []
+    for (const pattern of patterns) {
+      const ga = groupsA.get(pattern)
+      const gb = groupsB.get(pattern)
+      const countA = ga?.count || 0
+      const countB = gb?.count || 0
+      const timeA = ga?.totalMs || 0
+      const timeB = gb?.totalMs || 0
+      let side = 'both'
+      if (ga && !gb) side = 'onlyA'
+      else if (!ga && gb) side = 'onlyB'
+      const deltaCount = countB - countA
+      const likelyFilterDriven = meaningfulParamDiff && (
+        side === 'onlyA' ||
+        side === 'onlyB' ||
+        deltaCount !== 0
+      )
+      sqlDiff.push({
+        pattern,
+        sample: gb?.sample || ga?.sample || pattern,
+        type: gb?.type || ga?.type || '',
+        side,
+        countA,
+        countB,
+        timeA,
+        timeB,
+        deltaTime: timeB - timeA,
+        deltaCount,
+        isNPlusOneA: !!ga?.isNPlusOne,
+        isNPlusOneB: !!gb?.isNPlusOne,
+        isNPlusOne: !!(ga?.isNPlusOne || gb?.isNPlusOne),
+        likelyFilterDriven,
+        relatedParams: likelyFilterDriven ? meaningfulParamNames.slice(0, 6) : [],
+      })
+    }
+    sqlDiff.sort((x, y) => Math.abs(y.deltaTime) - Math.abs(x.deltaTime) || Math.abs(y.deltaCount) - Math.abs(x.deltaCount))
+
+    const cacheDiff = mergeTimedGroups(cacheA, cacheB, 'key')
+    const viewDiff = mergeTimedGroups(viewGroupsFor(a.id), viewGroupsFor(b.id), 'path')
+    const exceptionDiff = mergeCountGroups(exA, exB, 'label', 'label')
+
+    const totalDelta = deltaNum(a.duration, b.duration)
+    const totalDeltaPct = deltaPct(a.duration, b.duration)
+    const summary = buildCompareSummary({
+      totalDelta,
+      totalDeltaPct,
+      paramsDiff,
+      sqlDiff,
+      cacheDiff,
+      viewDiff,
+      exceptionDiff,
+    })
+
+    const waterfallA = waterfallSpansFor(a.id, scaleMs).map((s) => ({
+      ...s,
+      barClass: barClassForCategory(s.category),
+    }))
+    const waterfallB = waterfallSpansFor(b.id, scaleMs).map((s) => ({
+      ...s,
+      barClass: barClassForCategory(s.category),
+    }))
+
+    return {
+      a,
+      b,
+      sameAction: a.action === b.action,
+      scaleMs,
+      totalDelta,
+      totalDeltaPct,
+      summary,
+      metrics,
+      paramsDiff,
+      sqlDiff,
+      cacheDiff,
+      viewDiff,
+      exceptionDiff,
+      waterfallA,
+      waterfallB,
+      segmentsA: [
+        { key: 'view', label: 'View', ms: a.viewRuntime, barClass: 'bg-amber-500/90 dark:bg-amber-400/90' },
+        { key: 'db', label: 'DB', ms: a.dbRuntime, barClass: 'bg-sky-500/90 dark:bg-sky-400/90' },
+        { key: 'cache', label: 'Cache', ms: a.cacheRuntime, barClass: 'bg-emerald-500/90 dark:bg-emerald-400/90' },
+        { key: 'other', label: 'Other', ms: a.otherRuntime, barClass: 'bg-surface-400/80 dark:bg-surface-500/80' },
+      ],
+      segmentsB: [
+        { key: 'view', label: 'View', ms: b.viewRuntime, barClass: 'bg-amber-500/90 dark:bg-amber-400/90' },
+        { key: 'db', label: 'DB', ms: b.dbRuntime, barClass: 'bg-sky-500/90 dark:bg-sky-400/90' },
+        { key: 'cache', label: 'Cache', ms: b.cacheRuntime, barClass: 'bg-emerald-500/90 dark:bg-emerald-400/90' },
+        { key: 'other', label: 'Other', ms: b.otherRuntime, barClass: 'bg-surface-400/80 dark:bg-surface-500/80' },
+      ],
+    }
+  }
+
+  function exportCompareJson() {
+    const r = compareResult.value
+    if (!r) return null
+    return {
+      format: 'rails-panel-compare',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      delta: { ms: r.totalDelta, pct: r.totalDeltaPct },
+      summary: r.summary.text,
+      sameAction: r.sameAction,
+      a: {
+        id: r.a.id,
+        action: r.a.action,
+        status: r.a.status,
+        duration: r.a.duration,
+        isExternal: r.a.isExternal,
+      },
+      b: {
+        id: r.b.id,
+        action: r.b.action,
+        status: r.b.status,
+        duration: r.b.duration,
+        isExternal: r.b.isExternal,
+      },
+      metrics: r.metrics,
+      params: r.paramsDiff.filter((p) => p.side !== 'same'),
+      sql: r.sqlDiff.map((row) => ({
+        side: row.side,
+        pattern: row.pattern,
+        countA: row.countA,
+        countB: row.countB,
+        timeA: row.timeA,
+        timeB: row.timeB,
+        isNPlusOne: row.isNPlusOne,
+        likelyFilterDriven: row.likelyFilterDriven,
+      })),
+      cache: r.cacheDiff,
+      views: r.viewDiff,
+      exceptions: r.exceptionDiff,
+    }
+  }
+
+  function exportCompareText() {
+    const r = compareResult.value
+    if (!r) return null
+    const lines = []
+    lines.push('Rails Panel Compare (B − A)')
+    lines.push(`Summary: ${r.summary.text}`)
+    if (!r.sameAction) {
+      lines.push(`WARNING: different actions (${r.a.action} vs ${r.b.action})`)
+    }
+    lines.push('')
+    lines.push(`A: ${r.a.action} · ${r.a.status} · ${Math.round(r.a.duration)} ms${r.a.isExternal ? ' · ext' : ''}`)
+    lines.push(`B: ${r.b.action} · ${r.b.status} · ${Math.round(r.b.duration)} ms${r.b.isExternal ? ' · ext' : ''}`)
+    lines.push(`Delta: ${formatSignedMsText(r.totalDelta)} (${formatSignedPctText(r.totalDeltaPct)})`)
+    lines.push('')
+
+    const params = r.paramsDiff.filter((p) => !p.isFramework && p.side !== 'same')
+    if (params.length) {
+      lines.push('Params:')
+      for (const p of params) {
+        lines.push(`  [${p.side}] ${p.name}: ${p.valueA} → ${p.valueB}`)
+      }
+      lines.push('')
+    }
+
+    const sqlChanged = r.sqlDiff.filter(
+      (row) => row.side !== 'both' || row.deltaCount !== 0 || row.isNPlusOneA !== row.isNPlusOneB
+    )
+    if (sqlChanged.length) {
+      lines.push('SQL patterns:')
+      for (const row of sqlChanged.slice(0, 40)) {
+        const flag = row.likelyFilterDriven ? ' [filter-driven?]' : ''
+        const n1 = row.isNPlusOne ? ' [N+1]' : ''
+        lines.push(`  [${row.side}] ${row.countA}→${row.countB} · ${Math.round(row.timeA)}→${Math.round(row.timeB)} ms${n1}${flag}`)
+        lines.push(`    ${row.pattern.slice(0, 160)}`)
+      }
+      lines.push('')
+    }
+
+    const cacheChanged = r.cacheDiff.filter(
+      (row) => row.side !== 'both' || row.deltaCount !== 0 || row.hitChanged
+    )
+    if (cacheChanged.length) {
+      lines.push('Cache keys:')
+      for (const row of cacheChanged.slice(0, 30)) {
+        const hit = row.hitChanged
+          ? ` · hit ${row.hitsA}/${row.missesA}→${row.hitsB}/${row.missesB}`
+          : ''
+        lines.push(`  [${row.side}] ${row.key} · ${row.countA}→${row.countB}${hit}`)
+      }
+      lines.push('')
+    }
+
+    const viewChanged = r.viewDiff.filter((row) => row.side !== 'both' || row.deltaCount !== 0)
+    if (viewChanged.length) {
+      lines.push('Views:')
+      for (const row of viewChanged.slice(0, 30)) {
+        lines.push(`  [${row.side}] ${row.path} · ${row.countA}→${row.countB}`)
+      }
+      lines.push('')
+    }
+
+    const exChanged = r.exceptionDiff.filter((row) => row.side !== 'both' || row.deltaCount !== 0)
+    if (exChanged.length) {
+      lines.push('Exceptions:')
+      for (const row of exChanged.slice(0, 20)) {
+        lines.push(`  [${row.side}] ${row.countA}→${row.countB} · ${String(row.label).slice(0, 120)}`)
+      }
+    }
+
+    return lines.join('\n').trim() + '\n'
   }
 
   /**
@@ -1002,5 +1788,19 @@ export const useEventsStore = defineStore('events',  () => {
     pruneToCap,
     exportRequestJson,
     importRequestJson,
+    compareAId,
+    compareBId,
+    compareOpenNonce,
+    compareReady,
+    compareResult,
+    compareSlotFor,
+    setCompareSlot,
+    clearCompare,
+    swapCompare,
+    openCompareSide,
+    pendingDetailTab,
+    detailTabNonce,
+    exportCompareJson,
+    exportCompareText,
   }
 })

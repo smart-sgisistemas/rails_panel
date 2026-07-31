@@ -70,6 +70,45 @@
                 class="hidden"
                 @change="onImportFile"
               />
+              <span class="text-surface-300 dark:text-surface-600 select-none px-0.5" aria-hidden="true">·</span>
+              <button
+                type="button"
+                class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium
+                       cursor-pointer select-none transition-colors
+                       text-surface-600 dark:text-surface-300
+                       hover:bg-surface-100 dark:hover:bg-surface-700
+                       disabled:opacity-40 disabled:pointer-events-none"
+                title="Set selected request as compare A/B"
+                :disabled="!store.selectedRequest"
+                @click="onCompareSelected"
+              >
+                <i class="pi pi-arrows-h text-[10px]"></i>
+                Compare
+              </button>
+              <button
+                v-if="store.compareAId && store.compareBId"
+                type="button"
+                class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium
+                       cursor-pointer select-none transition-colors
+                       text-surface-600 dark:text-surface-300
+                       hover:bg-surface-100 dark:hover:bg-surface-700"
+                title="Swap compare A and B"
+                @click="store.swapCompare()"
+              >
+                Swap
+              </button>
+              <button
+                v-if="store.compareAId || store.compareBId"
+                type="button"
+                class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium
+                       cursor-pointer select-none transition-colors
+                       text-surface-600 dark:text-surface-300
+                       hover:bg-surface-100 dark:hover:bg-surface-700"
+                title="Clear compare slots"
+                @click="store.clearCompare()"
+              >
+                Clear
+              </button>
               <span
                 v-if="ioMessage"
                 class="ml-auto text-[10px] truncate max-w-[9rem]"
@@ -86,7 +125,7 @@
                 v-model:selection="store.selectedRequest"
                 :value="store.requests"
                 dataKey="id"
-                state-key="rp-requests-columns-v8"
+                state-key="rp-requests-columns-v9"
                 :row-class="requestRowClass"
               >
                 <Column field="status" header="Status" :style="colFit" :pt="centeredCol">
@@ -109,6 +148,14 @@
                   <template #body="slotProps">
                     <span class="inline-flex items-center gap-1.5 min-w-0 max-w-full">
                       <span
+                        v-if="compareSlot(slotProps.data)"
+                        class="shrink-0 rounded px-1 py-px text-[9px] font-bold uppercase tracking-wide"
+                        :class="compareSlot(slotProps.data) === 'A'
+                          ? 'bg-surface-200 text-surface-800 dark:bg-surface-600 dark:text-surface-100'
+                          : 'bg-primary-500/20 text-primary-800 dark:text-primary-200 ring-1 ring-primary-500/35'"
+                        :title="compareSlot(slotProps.data) === 'A' ? 'Compare baseline (A)' : 'Compare candidate (B)'"
+                      >{{ compareSlot(slotProps.data) }}</span>
+                      <span
                         class="min-w-0 truncate font-bold"
                         :class="slotProps.data.isExternal ? 'text-fuchsia-700 dark:text-fuchsia-300' : ''"
                         :title="actionTitle(slotProps.data)"
@@ -130,6 +177,23 @@
                         :title="nPlusOneTitle(slotProps.data)"
                       >N+1</span>
                     </span>
+                  </template>
+                </Column>
+                <Column header="" :style="colFit" :pt="centeredCol">
+                  <template #body="slotProps">
+                    <button
+                      type="button"
+                      class="inline-flex items-center justify-center rounded px-1 py-0.5 text-[10px] font-semibold
+                             cursor-pointer select-none transition-colors
+                             text-surface-500 dark:text-surface-400
+                             hover:bg-surface-200/80 dark:hover:bg-surface-600
+                             hover:text-surface-800 dark:hover:text-surface-100"
+                      :title="compareButtonTitle(slotProps.data)"
+                      @mousedown.stop.prevent
+                      @click.stop.prevent="onCompareRow(slotProps.data)"
+                    >
+                      {{ compareSlot(slotProps.data) ? '×' : '⇄' }}
+                    </button>
                   </template>
                 </Column>
                 <Column field="method" header="Method" :style="colFit" :pt="centeredCol" />
@@ -319,5 +383,27 @@ function nPlusOneTitle(row) {
   const patterns = row.nPlusOnePatterns || 0
   const queries = row.nPlusOneQueries || 0
   return `Possible N+1 · ${patterns} pattern${patterns === 1 ? '' : 's'} · ${queries} quer${queries === 1 ? 'y' : 'ies'}`
+}
+
+function compareSlot(rowOrId) {
+  return store.compareSlotFor(rowOrId)
+}
+
+function compareButtonTitle(rowOrId) {
+  const slot = store.compareSlotFor(rowOrId)
+  if (slot) return `Remove from compare (${slot})`
+  if (!store.compareAId) return 'Set as compare baseline (A)'
+  if (!store.compareBId) return 'Set as compare candidate (B)'
+  return 'Replace compare candidate (B)'
+}
+
+function onCompareRow(row) {
+  if (!row) return
+  store.setCompareSlot(row)
+}
+
+function onCompareSelected() {
+  if (!store.selectedRequest) return
+  store.setCompareSlot(store.selectedRequest)
 }
 </script>

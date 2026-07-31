@@ -22,12 +22,15 @@
       <TabPanel header="Error" :pt="errorPanelPt">
         <Exception v-if="store.selectedRequest" />
       </TabPanel>
+      <TabPanel header="Compare" :disabled="!store.compareReady" :pt="panelPt">
+        <Compare />
+      </TabPanel>
     </Tabbed>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import TabPanel from 'primevue/tabpanel';
 import Tabbed from './wrappers/Tabbed.vue'
 import Timeline from './Timeline.vue';
@@ -36,6 +39,7 @@ import ActionViewRenders from './ActionViewRenders.vue';
 import ActionParams from './ActionParams.vue';
 import Cache from './Cache.vue';
 import LogView from './LogView.vue';
+import Compare from './Compare.vue';
 import { useEventsStore } from '../stores/events';
 import Exception from './Exception.vue';
 
@@ -47,6 +51,7 @@ const TAB = {
   cache: 4,
   log: 5,
   error: 6,
+  compare: 7,
 }
 
 const CATEGORY_TAB = {
@@ -56,8 +61,46 @@ const CATEGORY_TAB = {
   error: TAB.error,
 }
 
+const TAB_BY_NAME = {
+  timeline: TAB.timeline,
+  params: TAB.params,
+  rendering: TAB.rendering,
+  database: TAB.database,
+  cache: TAB.cache,
+  log: TAB.log,
+  error: TAB.error,
+  compare: TAB.compare,
+}
+
 const store = useEventsStore()
 const activeIndex = ref(TAB.timeline)
+
+watch(
+  () => store.compareOpenNonce,
+  () => {
+    if (store.compareReady) {
+      activeIndex.value = TAB.compare
+    }
+  }
+)
+
+watch(
+  () => store.compareReady,
+  (ready) => {
+    if (!ready && activeIndex.value === TAB.compare) {
+      activeIndex.value = TAB.timeline
+    }
+  }
+)
+
+watch(
+  () => store.detailTabNonce,
+  () => {
+    const name = store.pendingDetailTab
+    const index = TAB_BY_NAME[name]
+    if (index != null) activeIndex.value = index
+  }
+)
 
 function onTimelineNavigate(payload) {
   const category = typeof payload === 'string' ? payload : payload?.category

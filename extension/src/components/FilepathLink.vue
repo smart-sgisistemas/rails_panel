@@ -68,6 +68,6 @@ const classes = computed(() => [
   'rp-link',
   'hover:underline',
   'hover:cursor-pointer',
-  props.truncate ? 'inline-block max-w-full truncate align-baseline' : 'whitespace-nowrap',
+  props.truncate ? 'inline-block max-w-full truncate align-baseline' : 'break-all whitespace-normal',
 ])
 </script>
