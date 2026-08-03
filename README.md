@@ -10,15 +10,17 @@ RailsPanel is a Chrome extension for Rails development that will end your tailin
 - **Timeline** — waterfall of the request with Slow / Heavy / Gap markers
 - **N+1 detection** — repeated SQL patterns called out in Database and Compare
 - **Compare (A/B)** — baseline vs candidate: params, SQL, cache, views, exceptions; click a row to jump into the detail tab with highlight; collapsible sections; copy SQL / cache / views from Compare
+- **Near-match SQL (≈)** — almost-identical patterns (e.g. extra `WHERE`) collapse to one **A≈B** row with the differing clause
+- **Filter? (F?)** — likely filter-driven SQL; Expand shows candidate params with A/B values
 - **Compare time noise** — configurable ms / % threshold for Diff / Slower / Faster (Settings)
 - **Share requests** — copy/export and import requests (including external captures)
 - **Syntax highlighting** — SQL and params colored in detail views and Compare
-- **Standalone demos** — richer fixtures (Compare pairs, N+1, 422 + stack, kitchen-sink request)
+- **Standalone demos** — richer fixtures (Compare pairs including filter ≈/F?, N+1, 422 + stack, kitchen-sink request)
 ### Compare at a glance
 
 1. Mark one request as **A** (baseline) and another as **B** (after your change).
 2. Open the **Compare** tab.
-3. Use filters such as **Diff**, **Slower**, **Faster**, **N+1**, or **F?** (likely filter-driven SQL).
+3. Use filters such as **Diff**, **Slower**, **Faster**, **N+1**, **≈ SQL**, or **Filter?** (likely filter-driven SQL).
 
 Example SQL row (B slower than A):
 

@@ -488,11 +488,18 @@
                          ring-1 ring-amber-500/35"
                 >N+1</span>
                 <span
+                  v-if="data.nearMatch && data.side !== 'near'"
+                  class="shrink-0 rounded px-1 py-px text-[9px] font-semibold
+                         bg-cyan-500/15 text-cyan-800 dark:text-cyan-200
+                         ring-1 ring-cyan-500/30"
+                  :title="nearMatchTitle(data)"
+                >≈</span>
+                <span
                   v-if="data.likelyFilterDriven"
                   class="shrink-0 rounded px-1 py-px text-[9px] font-semibold uppercase
                          bg-violet-500/15 text-violet-800 dark:text-violet-200
                          ring-1 ring-violet-500/30"
-                  :title="`Likely filter-driven · params: ${(data.relatedParams || []).join(', ')}`"
+                  :title="filterHintTitle(data)"
                 >F?</span>
               </div>
             </template>
@@ -507,6 +514,39 @@
                          font-mono text-[10px] leading-snug m-0 bg-transparent"
                   v-html="highlightSql(data.sample || data.pattern)"
                 ></pre>
+                <div
+                  v-if="data.sqlClauseDiff"
+                  class="text-[10px] leading-snug font-mono"
+                  :title="nearMatchTitle(data)"
+                >
+                  <span class="text-cyan-700 dark:text-cyan-300 font-semibold mr-1">
+                    {{ data.sqlClauseDiff.label }}
+                  </span>
+                  <span
+                    v-if="data.sqlClauseDiff.kind === 'added'"
+                    class="text-emerald-700 dark:text-emerald-400 break-all"
+                  >{{ data.sqlClauseDiff.text }}</span>
+                  <span
+                    v-else-if="data.sqlClauseDiff.kind === 'removed'"
+                    class="text-red-600 dark:text-red-400 break-all"
+                  >{{ data.sqlClauseDiff.text }}</span>
+                  <span
+                    v-else
+                    class="break-all text-surface-700 dark:text-surface-200"
+                  >
+                    <span class="text-red-600 dark:text-red-400">{{ data.sqlClauseDiff.textA }}</span>
+                    <span class="mx-1 text-surface-400">→</span>
+                    <span class="text-emerald-700 dark:text-emerald-400">{{ data.sqlClauseDiff.textB }}</span>
+                  </span>
+                </div>
+                <div
+                  v-if="data.likelyFilterDriven && relatedParamNames(data).length"
+                  class="text-[10px] leading-snug text-violet-700 dark:text-violet-300"
+                  :title="filterHintTitle(data)"
+                >
+                  <span class="font-semibold mr-1">F?</span>
+                  <span class="font-mono break-all">{{ relatedParamNames(data).join(', ') }}</span>
+                </div>
               </div>
             </template>
             <template #row-actions="{ data }">
@@ -840,19 +880,124 @@
             class="rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide"
             :class="sideBadgeClass(selectedSqlRow)"
           >{{ sideLabel(selectedSqlRow) }}</span>
+          <span
+            v-if="selectedSqlRow.nearMatch"
+            class="rounded px-1 py-px text-[9px] font-semibold
+                   bg-cyan-500/15 text-cyan-800 dark:text-cyan-200
+                   ring-1 ring-cyan-500/30"
+            :title="nearMatchTitle(selectedSqlRow)"
+          >≈ SQL</span>
+          <span
+            v-if="selectedSqlRow.likelyFilterDriven"
+            class="rounded px-1 py-px text-[9px] font-semibold uppercase
+                   bg-violet-500/15 text-violet-800 dark:text-violet-200
+                   ring-1 ring-violet-500/30"
+            :title="filterHintTitle(selectedSqlRow)"
+          >F?</span>
           <span>Count {{ selectedSqlRow.countA }} → {{ selectedSqlRow.countB }}</span>
           <span>·</span>
           <span>{{ formatMs(selectedSqlRow.timeA) }} → {{ formatMs(selectedSqlRow.timeB) }}</span>
         </div>
+
+        <section
+          v-if="selectedSqlRow.likelyFilterDriven && relatedParamRows(selectedSqlRow).length"
+          class="min-w-0"
+        >
+          <h3 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-violet-700 dark:text-violet-300 m-0 mb-2">
+            Possible filter params
+          </h3>
+          <div class="space-y-2">
+            <div
+              v-for="param in relatedParamRows(selectedSqlRow)"
+              :key="param.name"
+              class="rounded-md px-3 py-2.5
+                     bg-violet-500/5 dark:bg-violet-400/5
+                     ring-1 ring-violet-500/25 dark:ring-violet-400/20"
+            >
+              <div class="flex flex-wrap items-center gap-1.5 mb-1.5">
+                <span
+                  class="rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide"
+                  :class="paramSideBadgeClass(param)"
+                >{{ paramSideLabel(param) }}</span>
+                <span class="font-semibold text-[12px] text-surface-900 dark:text-surface-50 break-all">
+                  {{ param.name }}
+                </span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[12px] font-mono leading-snug">
+                <div class="min-w-0">
+                  <div class="text-[10px] font-semibold uppercase tracking-wide text-surface-500 mb-0.5">A</div>
+                  <pre
+                    class="m-0 max-h-32 overflow-auto whitespace-pre-wrap break-words"
+                    :title="paramTitle(param.rawA, param.valueA)"
+                    v-html="prettyParam(param.rawA, param.valueA)"
+                  ></pre>
+                </div>
+                <div class="min-w-0">
+                  <div class="text-[10px] font-semibold uppercase tracking-wide text-surface-500 mb-0.5">B</div>
+                  <pre
+                    class="m-0 max-h-32 overflow-auto whitespace-pre-wrap break-words"
+                    :class="param.side === 'changed' ? 'ring-1 ring-inset ring-amber-500/25 rounded-sm px-0.5' : ''"
+                    :title="paramTitle(param.rawB, param.valueB)"
+                    v-html="prettyParam(param.rawB, param.valueB)"
+                  ></pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          v-if="selectedSqlRow.sqlClauseDiff"
+          class="min-w-0"
+        >
+          <h3 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-cyan-700 dark:text-cyan-400 m-0 mb-2">
+            SQL difference
+          </h3>
+          <div
+            class="font-mono text-[12px] leading-snug px-3 py-2.5 rounded-md
+                   bg-cyan-500/5 dark:bg-cyan-400/5
+                   ring-1 ring-cyan-500/25 dark:ring-cyan-400/20"
+          >
+            <div class="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300 mb-1">
+              {{ selectedSqlRow.sqlClauseDiff.label }}
+            </div>
+            <div
+              v-if="selectedSqlRow.sqlClauseDiff.kind === 'added'"
+              class="text-emerald-700 dark:text-emerald-400 break-words whitespace-pre-wrap"
+            >{{ selectedSqlRow.sqlClauseDiff.text }}</div>
+            <div
+              v-else-if="selectedSqlRow.sqlClauseDiff.kind === 'removed'"
+              class="text-red-600 dark:text-red-400 break-words whitespace-pre-wrap"
+            >{{ selectedSqlRow.sqlClauseDiff.text }}</div>
+            <div
+              v-else
+              class="break-words whitespace-pre-wrap space-y-1"
+            >
+              <div>
+                <span class="text-[10px] font-semibold text-surface-500 mr-1">A</span>
+                <span class="text-red-600 dark:text-red-400">{{ selectedSqlRow.sqlClauseDiff.textA }}</span>
+              </div>
+              <div>
+                <span class="text-[10px] font-semibold text-surface-500 mr-1">B</span>
+                <span class="text-emerald-700 dark:text-emerald-400">{{ selectedSqlRow.sqlClauseDiff.textB }}</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section class="min-w-0">
           <div class="flex items-center justify-between gap-2 mb-2">
             <h3 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-sky-700 dark:text-sky-400 m-0">
               SQL
+              <span
+                v-if="selectedSqlRow.nearMatch"
+                class="ml-1 font-normal normal-case tracking-normal text-surface-400"
+              >A</span>
             </h3>
             <CopyButton
               label="Copy SQL"
-              title="Copy SQL to clipboard"
-              :get-text="() => selectedSqlRow?.sample || selectedSqlRow?.pattern || ''"
+              title="Copy SQL A to clipboard"
+              :get-text="() => selectedSqlRow?.sampleA || selectedSqlRow?.sample || selectedSqlRow?.pattern || ''"
             />
           </div>
           <pre
@@ -860,7 +1005,31 @@
                    bg-surface-50 dark:bg-surface-900
                    ring-1 ring-sky-500/20 dark:ring-sky-400/25
                    border-l-[3px] border-sky-500 dark:border-sky-400"
-            v-html="highlightSql(selectedSqlRow.sample || selectedSqlRow.pattern)"
+            v-html="highlightSql(selectedSqlRow.sampleA || selectedSqlRow.sample || selectedSqlRow.pattern)"
+          ></pre>
+        </section>
+
+        <section
+          v-if="selectedSqlRow.nearMatch && (selectedSqlRow.sampleB || selectedSqlRow.nearMatchPartnerSample || selectedSqlRow.nearMatchPartnerPattern)"
+          class="min-w-0"
+        >
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <h3 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-cyan-700 dark:text-cyan-400 m-0">
+              SQL
+              <span class="ml-1 font-normal normal-case tracking-normal text-surface-400">B</span>
+            </h3>
+            <CopyButton
+              label="Copy SQL"
+              title="Copy SQL B to clipboard"
+              :get-text="() => selectedSqlRow?.sampleB || selectedSqlRow?.nearMatchPartnerSample || selectedSqlRow?.nearMatchPartnerPattern || ''"
+            />
+          </div>
+          <pre
+            class="hljs font-mono text-[13px] leading-[1.55] whitespace-pre-wrap break-words m-0 px-3.5 py-3 rounded-md
+                   bg-surface-50 dark:bg-surface-900
+                   ring-1 ring-cyan-500/25 dark:ring-cyan-400/20
+                   border-l-[3px] border-cyan-500 dark:border-cyan-400"
+            v-html="highlightSql(selectedSqlRow.sampleB || selectedSqlRow.nearMatchPartnerSample || selectedSqlRow.nearMatchPartnerPattern)"
           ></pre>
         </section>
 
@@ -1073,6 +1242,7 @@ const sqlFilters = [
   { key: 'slower', label: 'Slower' },
   { key: 'faster', label: 'Faster' },
   { key: 'n1', label: 'N+1' },
+  { key: 'near', label: '≈ SQL' },
   { key: 'filter', label: 'Filter?' },
 ]
 
@@ -1183,6 +1353,8 @@ const filteredSql = computed(() => {
       return rows.filter((r) => r.side === 'both' && isFaster(r))
     case 'n1':
       return rows.filter((r) => r.isNPlusOne)
+    case 'near':
+      return rows.filter((r) => r.nearMatch)
     case 'filter':
       return rows.filter((r) => r.likelyFilterDriven)
     default:
@@ -1270,7 +1442,21 @@ const displayedSql = computed(() =>
   textFilter(filteredSql.value, sqlSearch.value, (row, q) =>
     includesText(row.type, q) ||
     includesText(row.pattern, q) ||
-    includesText(row.sample, q)
+    includesText(row.sample, q) ||
+    includesText(row.sampleA, q) ||
+    includesText(row.sampleB, q) ||
+    includesText(row.patternA, q) ||
+    includesText(row.patternB, q) ||
+    includesText(row.sqlClauseDiff?.text, q) ||
+    includesText(row.sqlClauseDiff?.textA, q) ||
+    includesText(row.sqlClauseDiff?.textB, q) ||
+    includesText(row.nearMatchPartnerSample, q) ||
+    includesText(row.nearMatchPartnerPattern, q) ||
+    relatedParamRows(row).some((p) =>
+      includesText(p.name, q) ||
+      includesText(p.valueA, q) ||
+      includesText(p.valueB, q)
+    )
   )
 )
 
@@ -1299,8 +1485,9 @@ const displayedExceptions = computed(() =>
 
 function sideRank(side) {
   if (side === 'onlyA') return 0
-  if (side === 'both') return 1
-  return 2
+  if (side === 'near') return 1
+  if (side === 'both') return 2
+  return 3
 }
 
 function paramSideRank(side) {
@@ -1438,7 +1625,37 @@ function deltaClass(delta) {
 function sideLabel(row) {
   if (row.side === 'onlyA') return 'A'
   if (row.side === 'onlyB') return 'B'
+  if (row.side === 'near' || row.nearMatch) return 'A≈B'
   return 'A-B'
+}
+
+function nearMatchTitle(row) {
+  const parts = ['Near-match SQL (same shape, different clause)']
+  const d = row.sqlClauseDiff
+  if (d?.kind === 'added') parts.push(`+ ${d.text}`)
+  else if (d?.kind === 'removed') parts.push(`− ${d.text}`)
+  else if (d?.kind === 'changed') parts.push(`${d.textA} → ${d.textB}`)
+  const names = relatedParamNames(row)
+  if (row.likelyFilterDriven && names.length) {
+    parts.push(`Filter? params: ${names.join(', ')}`)
+  }
+  return parts.join(' · ')
+}
+
+function relatedParamRows(row) {
+  return (row?.relatedParams || []).map((p) => (
+    typeof p === 'string' ? { name: p } : p
+  )).filter((p) => p?.name)
+}
+
+function relatedParamNames(row) {
+  return relatedParamRows(row).map((p) => p.name)
+}
+
+function filterHintTitle(row) {
+  const names = relatedParamNames(row)
+  if (!names.length) return 'Likely filter-driven (params changed + SQL add/remove/count)'
+  return `Likely filter-driven · params: ${names.join(', ')}`
 }
 
 function sideBadgeClass(row) {
@@ -1447,6 +1664,9 @@ function sideBadgeClass(row) {
   }
   if (row.side === 'onlyB') {
     return 'bg-primary-500/20 text-primary-800 dark:text-primary-200 ring-1 ring-primary-500/35'
+  }
+  if (row.side === 'near' || row.nearMatch) {
+    return 'bg-cyan-500/15 text-cyan-800 dark:text-cyan-200 ring-1 ring-cyan-500/30'
   }
   return 'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-300'
 }

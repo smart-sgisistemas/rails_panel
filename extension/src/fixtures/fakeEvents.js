@@ -1317,13 +1317,15 @@ const THUMBNAIL_ID = 'a8e3f2c1-4b5d-4e6f-8a9b-0c1d2e3f4a5b'
 const HELLO_ID = '1860f1f3-a7a7-41b0-a2f3-a1bca089bb6d'
 const UPDATE_FAST_ID = '5e77aac7-aeae-460d-a6f8-424b93bbd5d2'
 const UPDATE_SLOW_ID = 'd5e6f7a8-9012-4b3c-8d4e-5f6071829304'
+const POSTS_FILTER_PLAIN_ID = 'c0d1e2f3-4567-4a70-b293-041526374859'
+const POSTS_FILTER_STATUS_ID = 'd1e2f3a4-5678-4b71-c304-152637485960'
 const POSTS_N1_ID = 'e6f7a8b9-0123-4c4d-9e5f-607182930415'
 const POSTS_CREATE_OK_ID = 'f7a8b9c0-1234-4d5e-8f60-718293041526'
 const POSTS_CREATE_422_ID = 'a8b9c0d1-2345-4e5f-9071-829304152637'
 const KITCHEN_SINK_ID = 'b9c0d1e2-3456-4f60-a182-930415263748'
 
-/** Stable ids for standalone Compare seed (show fast / show slow). */
-export const DEMO_COMPARE_IDS = { a: SHOW_FAST_ID, b: SHOW_SLOW_ID }
+/** Stable ids for standalone Compare seed (posts index filter ≈ SQL / F?). */
+export const DEMO_COMPARE_IDS = { a: POSTS_FILTER_PLAIN_ID, b: POSTS_FILTER_STATUS_ID }
 
 const byId = Object.fromEntries(capturedRequests.map((r) => [r.request_id, r]))
 
@@ -1392,6 +1394,81 @@ const updateSlow = patchProcessAction(
     params: { id: '99' },
   }
 )
+
+/** Compare pair: same Posts#index shape, B adds status filter → ≈ SQL + F?. */
+const filterPlainTime = 1715000000500
+const postsFilterPlain = makeRequest(POSTS_FILTER_PLAIN_ID, [
+  makeSqlEvent({
+    sql: 'SELECT "posts".* FROM "posts" ORDER BY "posts"."created_at" DESC LIMIT $1',
+    name: 'Post Load',
+    duration: 1.8,
+    binds: [20],
+    time: filterPlainTime,
+    filename: '/app/controllers/posts_controller.rb',
+    line: 8,
+    method: 'index',
+    transactionId: 'posts-filter-plain-tx',
+  }),
+  makeViewEvent({
+    kind: 'template',
+    identifier: '/app/views/posts/index.html.erb',
+    layout: 'layouts/application',
+    duration: 4.2,
+    time: filterPlainTime + 3,
+    transactionId: 'posts-filter-plain-tx',
+  }),
+  makeProcessAction({
+    controller: 'PostsController',
+    action: 'index',
+    method: 'GET',
+    path: '/posts',
+    status: 200,
+    format: 'html',
+    params: { page: '1' },
+    duration: 18,
+    dbRuntime: 1.8,
+    viewRuntime: 4.2,
+    time: filterPlainTime,
+    transactionId: 'posts-filter-plain-tx',
+  }),
+])
+
+const filterStatusTime = 1715000000800
+const postsFilterStatus = makeRequest(POSTS_FILTER_STATUS_ID, [
+  makeSqlEvent({
+    sql: 'SELECT "posts".* FROM "posts" WHERE "posts"."status" = $1 ORDER BY "posts"."created_at" DESC LIMIT $2',
+    name: 'Post Load',
+    duration: 2.6,
+    binds: ['published', 20],
+    time: filterStatusTime,
+    filename: '/app/controllers/posts_controller.rb',
+    line: 8,
+    method: 'index',
+    transactionId: 'posts-filter-status-tx',
+  }),
+  makeViewEvent({
+    kind: 'template',
+    identifier: '/app/views/posts/index.html.erb',
+    layout: 'layouts/application',
+    duration: 4.0,
+    time: filterStatusTime + 4,
+    transactionId: 'posts-filter-status-tx',
+  }),
+  makeProcessAction({
+    controller: 'PostsController',
+    action: 'index',
+    method: 'GET',
+    path: '/posts',
+    status: 200,
+    format: 'html',
+    params: { page: '1', status: 'published' },
+    duration: 22,
+    dbRuntime: 2.6,
+    viewRuntime: 4.0,
+    time: filterStatusTime,
+    transactionId: 'posts-filter-status-tx',
+  }),
+])
 
 const n1BaseTime = 1715000000000
 const postsNPlusOne = makeRequest(POSTS_N1_ID, [
@@ -1821,13 +1898,15 @@ const kitchenSink = makeRequest(KITCHEN_SINK_ID, [
 
 /**
  * Standalone demo requests:
- * show fast/slow (Compare pair), thumbnail 500, hello cache,
- * update fast/slow (Compare pair), posts N+1, create 201/422,
- * kitchen-sink (all tabs).
+ * show fast/slow, posts filter plain/status (Compare ≈ SQL / F?),
+ * thumbnail 500, hello cache, update fast/slow, posts N+1,
+ * create 201/422, kitchen-sink (all tabs).
  */
 export const fakeEvents = [
   showFast,
   showSlow,
+  postsFilterPlain,
+  postsFilterStatus,
   byId[THUMBNAIL_ID],
   byId[HELLO_ID],
   updateFast,

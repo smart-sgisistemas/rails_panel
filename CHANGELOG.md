@@ -5,6 +5,29 @@ All notable changes to the **Rails Panel** Chrome extension are documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] — 2026-08-03
+
+### Added
+
+- **Near-match SQL (≈)** — pairs only-A / only-B patterns with the same shape (e.g. extra `WHERE`) into one **A≈B** row, with a clause snippet (`+` / `−` / `≠`)
+- **Filter? params in Expand** — when **F?** is set, Expand shows candidate params with **A / B** values
+- Filters **≈ SQL** and **Filter?** on Compare SQL
+- Demo pair **Posts#index** plain vs `status=published` (standalone Compare seed) to exercise ≈ + F?
+
+### Changed
+
+- Near-match pairs collapse to a **single** Compare row (counts/times from both sides)
+- SQL Expand shows SQL A and SQL B for near-matches
+
+### Examples
+
+#### Near-match + Filter?
+
+1. Run `npm run dev` in `extension/`.
+2. Open Compare (pre-seeded with the two `PostsController#index` requests).
+3. SQL filter **≈ SQL** or **Filter?** → one **A≈B** row with `+ clause WHERE "posts"."status" = ?` and `F? status`.
+4. Expand → possible filter params with A/B values, plus both SQL samples.
+
 ## [2.5.0] — 2026-08-03
 
 ### Added
@@ -141,6 +164,8 @@ Filter Cache with **Hits** to see only keys whose hit/miss mix changed (`hitΔ`)
 
 Earlier Chrome Web Store / classic extension builds. See git history for details.
 
+[2.6.0]: https://github.com/smart-sgisistemas/rails_panel/releases/tag/v2.6.0
+[2.5.0]: https://github.com/smart-sgisistemas/rails_panel/releases/tag/v2.5.0
 [2.4.0]: https://github.com/smart-sgisistemas/rails_panel/releases/tag/v2.4.0
 [2.3.0]: https://github.com/smart-sgisistemas/rails_panel/releases/tag/v2.3.0
 [2.0.0]: https://github.com/smart-sgisistemas/rails_panel/releases/tag/v2.0.0

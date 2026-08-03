@@ -1,7 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { withExclusiveDurations, sumExclusive } from '../components/utils/timing'
-import { annotateQueryRepeats, nPlusOneGroups, normalizeSql, isMetaSqlType } from '../components/utils/sqlPatterns'
+import { annotateQueryRepeats, nPlusOneGroups, normalizeSql, isMetaSqlType, annotateSqlNearMatches, collapseSqlNearMatches } from '../components/utils/sqlPatterns'
 import { useSettingsStore } from './settings'
 
 export const useEventsStore = defineStore('events',  () => {
@@ -1468,9 +1468,13 @@ export const useEventsStore = defineStore('events',  () => {
     if (!id || !row) return []
 
     if (kind === 'sql') {
-      const pattern = row.pattern
+      const patterns = new Set(
+        [row.pattern, row.patternA, row.patternB, row.nearMatchPartnerPattern]
+          .filter(Boolean)
+          .map((p) => String(p))
+      )
       return (activeRecordQueries.value.get(id) || [])
-        .filter((q) => !isMetaSqlType(q.type) && normalizeSql(q.query) === pattern)
+        .filter((q) => !isMetaSqlType(q.type) && patterns.has(normalizeSql(q.query)))
         .map((q) => q.sourceKey)
         .filter(Boolean)
     }
@@ -1537,8 +1541,8 @@ export const useEventsStore = defineStore('events',  () => {
     let id = side === 'B' ? compareBId.value : compareAId.value
     let keys = highlightKeysForCompareRow(id, kind, row)
 
-    // both sides: if preferred has no matches, try the other
-    if (!keys.length && row.side === 'both') {
+    // both / near: if preferred has no matches, try the other
+    if (!keys.length && (row.side === 'both' || row.side === 'near' || row.nearMatch)) {
       const other = side === 'B' ? 'A' : 'B'
       const otherId = other === 'B' ? compareBId.value : compareAId.value
       const otherKeys = highlightKeysForCompareRow(otherId, kind, row)
@@ -1597,9 +1601,17 @@ export const useEventsStore = defineStore('events',  () => {
 
     const paramsDiff = buildParamsDiff(a.id, b.id)
     const meaningfulParamDiff = paramsDiff.some((p) => !p.isFramework && p.side !== 'same')
-    const meaningfulParamNames = paramsDiff
+    const meaningfulParams = paramsDiff
       .filter((p) => !p.isFramework && p.side !== 'same')
-      .map((p) => p.name)
+      .slice(0, 6)
+      .map((p) => ({
+        name: p.name,
+        side: p.side,
+        valueA: p.valueA,
+        valueB: p.valueB,
+        rawA: p.rawA,
+        rawB: p.rawB,
+      }))
 
     const groupsA = sqlPatternGroupsFor(a.id)
     const groupsB = sqlPatternGroupsFor(b.id)
@@ -1638,10 +1650,15 @@ export const useEventsStore = defineStore('events',  () => {
         isNPlusOneB: !!gb?.isNPlusOne,
         isNPlusOne: !!(ga?.isNPlusOne || gb?.isNPlusOne),
         likelyFilterDriven,
-        relatedParams: likelyFilterDriven ? meaningfulParamNames.slice(0, 6) : [],
+        relatedParams: likelyFilterDriven ? meaningfulParams : [],
+        nearMatch: false,
+        nearMatchPartnerPattern: null,
+        sqlClauseDiff: null,
       })
     }
-    sqlDiff.sort((x, y) => Math.abs(y.deltaTime) - Math.abs(x.deltaTime) || Math.abs(y.deltaCount) - Math.abs(x.deltaCount))
+    annotateSqlNearMatches(sqlDiff, { meaningfulParams })
+    const sqlDiffCollapsed = collapseSqlNearMatches(sqlDiff)
+    sqlDiffCollapsed.sort((x, y) => Math.abs(y.deltaTime) - Math.abs(x.deltaTime) || Math.abs(y.deltaCount) - Math.abs(x.deltaCount))
 
     const cacheDiff = mergeTimedGroups(cacheA, cacheB, 'key')
     const viewDiff = mergeTimedGroups(viewGroupsFor(a.id), viewGroupsFor(b.id), 'path')
@@ -1653,7 +1670,7 @@ export const useEventsStore = defineStore('events',  () => {
       totalDelta,
       totalDeltaPct,
       paramsDiff,
-      sqlDiff,
+      sqlDiff: sqlDiffCollapsed,
       cacheDiff,
       viewDiff,
       exceptionDiff,
@@ -1678,7 +1695,7 @@ export const useEventsStore = defineStore('events',  () => {
       summary,
       metrics,
       paramsDiff,
-      sqlDiff,
+      sqlDiff: sqlDiffCollapsed,
       cacheDiff,
       viewDiff,
       exceptionDiff,
@@ -1771,7 +1788,13 @@ export const useEventsStore = defineStore('events',  () => {
     if (sqlChanged.length) {
       lines.push('SQL patterns:')
       for (const row of sqlChanged.slice(0, 40)) {
-        const flag = row.likelyFilterDriven ? ' [filter-driven?]' : ''
+        const related = (row.relatedParams || [])
+          .map((p) => (typeof p === 'string' ? p : p.name))
+          .filter(Boolean)
+          .join(', ')
+        const flag = row.likelyFilterDriven
+          ? ` [filter-driven?${related ? `: ${related}` : ''}]`
+          : ''
         const n1 = row.isNPlusOne ? ' [N+1]' : ''
         lines.push(`  [${row.side}] ${row.countA}→${row.countB} · ${Math.round(row.timeA)}→${Math.round(row.timeB)} ms${n1}${flag}`)
         lines.push(`    ${row.pattern.slice(0, 160)}`)
