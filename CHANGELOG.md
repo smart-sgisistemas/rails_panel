@@ -5,6 +5,30 @@ All notable changes to the **Rails Panel** Chrome extension are documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] — 2026-08-03
+
+### Added
+
+- **Richer standalone demo fixtures** — pairs of the same action for Compare (`#show` / `#update` fast vs slow), N+1 `PostsController#index`, `PostsController#create` 201/422, and a kitchen-sink `OrdersController#checkout` covering DB / views / cache / logs / exception
+- **Compare row copy** — copy SQL, cache keys, and template paths from Compare tables; SQL detail panel with copy
+- Standalone demo pre-selects `#show` fast/slow as Compare A/B on first load
+
+### Fixed
+
+- **Exception backtraces** — multiline / multi-frame stacks render as separate lines in Error and Timeline (one frame per line, including multiline `call` payloads)
+
+### Examples
+
+#### Demo Compare without a Rails app
+
+1. Run `npm run dev` in `extension/`.
+2. Open http://localhost:5173/ — Compare opens with two `DiagramsController#show` requests.
+3. Switch filters to **Slower** / **Diff** to see timing and extra SQL.
+
+#### Validation 422 with stack
+
+Select `PostsController#create` (422) → **Error** shows `ActiveRecord::RecordInvalid` plus a multi-frame backtrace.
+
 ## [2.4.0] — 2026-07-31
 
 ### Added

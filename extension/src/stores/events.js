@@ -222,13 +222,16 @@ export const useEventsStore = defineStore('events',  () => {
     exceptionStacktraces.value.set(id, (() => {
       let errorIndex = 0
       return newEvents.flatMap((event) => {
-        if (event.name == "process_action.action_controller.exception") {
-          return [{
-            trace: event.payload.call,
-            sourceKey: `error:${errorIndex++}`,
-          }]
-        }
-        return []
+        if (event.name != "process_action.action_controller.exception") return []
+        // One UI frame per line (supports multiline `call` payloads).
+        const lines = String(event.payload?.call || '')
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean)
+        return lines.map((trace) => ({
+          trace,
+          sourceKey: `error:${errorIndex++}`,
+        }))
       })
     })());    
 
@@ -840,7 +843,8 @@ export const useEventsStore = defineStore('events',  () => {
   function buildExceptionSpan(actionEvent, events, totalMs) {
     const frames = events
       .filter((e) => e.name === 'process_action.action_controller.exception')
-      .map((e) => String(e.payload?.call || ''))
+      .flatMap((e) => String(e.payload?.call || '').split('\n'))
+      .map((line) => line.trim())
       .filter(Boolean)
     const payloadEx = actionEvent.payload?.exception
     if (!frames.length && !payloadEx) return null
@@ -1071,6 +1075,7 @@ export const useEventsStore = defineStore('events',  () => {
         map.set(pattern, {
           pattern,
           sample: q.query,
+          binds: q.binds,
           type: q.type,
           count: 0,
           totalMs: 0,
@@ -1079,6 +1084,11 @@ export const useEventsStore = defineStore('events',  () => {
       const g = map.get(pattern)
       g.count += 1
       g.totalMs += Number(q.duration) || 0
+      // Prefer a non-empty binds sample when the first occurrence had none
+      if ((g.binds == null || (Array.isArray(g.binds) && !g.binds.length)) && q.binds != null) {
+        g.binds = q.binds
+        g.sample = q.query
+      }
     }
     for (const g of map.values()) {
       g.isNPlusOne = g.count >= nPlusOneMin
@@ -1614,6 +1624,8 @@ export const useEventsStore = defineStore('events',  () => {
       sqlDiff.push({
         pattern,
         sample: gb?.sample || ga?.sample || pattern,
+        bindsA: ga?.binds,
+        bindsB: gb?.binds,
         type: gb?.type || ga?.type || '',
         side,
         countA,

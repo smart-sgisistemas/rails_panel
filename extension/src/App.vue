@@ -4,7 +4,7 @@
 
 <script setup>
 import Requests from './components/Requests.vue'
-import { fakeEvents } from './fixtures/fakeEvents'
+import { fakeEvents, DEMO_COMPARE_IDS } from './fixtures/fakeEvents'
 import { useEventsStore } from './stores/events';
 import { useSettingsStore } from './stores/settings';
 import { isExtensionContextValid } from './theme'
@@ -19,6 +19,8 @@ onMounted(() => {
   if (typeof chrome === 'undefined' || typeof chrome.devtools === 'undefined') {
     console.log("STANDALONE mode... mocking requests");
     fakeEvents.forEach((data) => eventsStore.pushEvents(data.request_id, data.events));
+    eventsStore.setCompareSlot(DEMO_COMPARE_IDS.a)
+    eventsStore.setCompareSlot(DEMO_COMPARE_IDS.b)
     return
   }
 

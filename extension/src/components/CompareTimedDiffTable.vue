@@ -1,6 +1,7 @@
 <template>
   <div
-    class="w-full min-w-0 rounded border border-surface-200 dark:border-surface-700 overflow-hidden"
+    class="w-full min-w-0 overflow-hidden"
+    :class="framed ? 'rounded border border-surface-200 dark:border-surface-700' : ''"
     :title="title"
   >
     <DetailsTable
@@ -36,6 +37,18 @@
       >
         <template #body="slotProps">
           <slot name="item" :data="slotProps.data" />
+        </template>
+      </Column>
+
+      <Column
+        v-if="$slots['row-actions']"
+        header=""
+        :style="actionsCol"
+      >
+        <template #body="slotProps">
+          <div class="inline-flex items-center gap-1.5" @click.stop>
+            <slot name="row-actions" :data="slotProps.data" />
+          </div>
         </template>
       </Column>
 
@@ -115,7 +128,14 @@
           <span
             class="tabular-nums whitespace-nowrap font-medium"
             :class="deltaClass(slotProps.data.deltaTime)"
-          >{{ formatSignedMs(slotProps.data.deltaTime) }}</span>
+            :title="deltaTimeTitle(slotProps.data)"
+          >
+            {{ formatSignedMs(slotProps.data.deltaTime) }}
+            <span
+              v-if="deltaTimePct(slotProps.data) != null"
+              class="opacity-80"
+            > ({{ formatSignedPct(deltaTimePct(slotProps.data)) }})</span>
+          </span>
         </template>
       </Column>
     </DetailsTable>
@@ -133,12 +153,14 @@ defineProps({
   itemHeader: { type: String, default: 'Item' },
   itemField: { type: String, default: 'key' },
   showHits: { type: Boolean, default: false },
+  framed: { type: Boolean, default: true },
   title: { type: String, default: 'Click a row to open the matching detail tab' },
 })
 
 const emit = defineEmits(['row-click'])
 
 function onRowClick(event) {
+  if (event?.originalEvent?.target?.closest?.('a, button')) return
   emit('row-click', event?.data || event)
 }
 
@@ -150,6 +172,13 @@ const sideCol = {
 }
 
 const colFit = {
+  width: '1%',
+  whiteSpace: 'nowrap',
+  overflow: 'visible',
+  verticalAlign: 'top',
+}
+
+const actionsCol = {
   width: '1%',
   whiteSpace: 'nowrap',
   overflow: 'visible',
@@ -193,10 +222,33 @@ function formatSignedMs(ms) {
   return `${sign}${Math.round(abs)} ms`
 }
 
+function formatSignedPct(pct) {
+  const n = Number(pct) || 0
+  if (Math.abs(n) < 0.05) return '0%'
+  const sign = n > 0 ? '+' : '−'
+  return `${sign}${Math.abs(n).toFixed(0)}%`
+}
+
 function formatSignedCount(n) {
   const v = Number(n) || 0
   if (v === 0) return '0'
   return v > 0 ? `+${v}` : String(v)
+}
+
+/** Δ% relative to baseline (A). */
+function deltaTimePct(row) {
+  const base = Number(row.timeA) || 0
+  const delta = Number(row.deltaTime) || 0
+  if (Math.abs(delta) < 0.05) return 0
+  if (base < 0.05) return null
+  return (delta / base) * 100
+}
+
+function deltaTimeTitle(row) {
+  const pct = deltaTimePct(row)
+  const ms = formatSignedMs(row.deltaTime)
+  if (pct == null) return `${ms} (no baseline time on A)`
+  return `${ms} (${formatSignedPct(pct)} vs A)`
 }
 
 function deltaClass(delta) {

@@ -1,6 +1,6 @@
 {
   "name": "Rails Panel",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "manifest_version": 3,
   "description": "Devtools panel for Rails development",
   "devtools_page": "devtools.html",
