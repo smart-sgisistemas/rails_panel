@@ -5,7 +5,7 @@ All notable changes to the **Rails Panel** Chrome extension are documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.6.0] — 2026-08-03
+## [2.5.1] — 2026-08-03
 
 ### Added
 
@@ -164,7 +164,7 @@ Filter Cache with **Hits** to see only keys whose hit/miss mix changed (`hitΔ`)
 
 Earlier Chrome Web Store / classic extension builds. See git history for details.
 
-[2.6.0]: https://github.com/smart-sgisistemas/rails_panel/releases/tag/v2.6.0
+[2.5.1]: https://github.com/smart-sgisistemas/rails_panel/releases/tag/v2.5.1
 [2.5.0]: https://github.com/smart-sgisistemas/rails_panel/releases/tag/v2.5.0
 [2.4.0]: https://github.com/smart-sgisistemas/rails_panel/releases/tag/v2.4.0
 [2.3.0]: https://github.com/smart-sgisistemas/rails_panel/releases/tag/v2.3.0
