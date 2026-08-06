@@ -162,10 +162,10 @@
       <span v-else class="flex-1">Query</span>
     </template>
 
-    <div v-if="selectedQuery" class="space-y-5 max-h-[72vh] overflow-auto">
+    <div v-if="selectedQuery" class="space-y-3 max-h-[72vh] overflow-auto">
       <div
         v-if="selectedQuery.location"
-        class="flex items-baseline gap-2 text-[12px] min-w-0"
+        class="flex items-baseline gap-2 text-[12px] min-w-0 px-0.5"
       >
         <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-surface-400 dark:text-surface-500">
           Location
@@ -177,9 +177,14 @@
         />
       </div>
 
-      <section class="min-w-0">
-        <div class="flex items-center justify-between gap-2 mb-2">
-          <h3 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-sky-700 dark:text-sky-400">
+      <section
+        class="min-w-0 rounded-md border border-surface-200 dark:border-surface-600 overflow-hidden
+               border-l-[3px] border-l-sky-500 dark:border-l-sky-400"
+      >
+        <div class="flex items-center justify-between gap-2 px-3 py-2
+                    border-b border-surface-200 dark:border-surface-600
+                    bg-surface-100/60 dark:bg-surface-800/60">
+          <h3 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-sky-700 dark:text-sky-400 m-0">
             SQL
           </h3>
           <CopyButton
@@ -189,26 +194,28 @@
           />
         </div>
         <pre
-          class="hljs font-mono text-[13px] leading-[1.55] whitespace-pre-wrap break-words m-0 px-3.5 py-3 rounded-md
-                 bg-surface-50 dark:bg-surface-900
-                 ring-1 ring-sky-500/20 dark:ring-sky-400/25
-                 border-l-[3px] border-sky-500 dark:border-sky-400"
+          class="hljs font-mono text-[13px] leading-[1.55] whitespace-pre-wrap break-normal m-0 px-3.5 py-3
+                 bg-surface-50 dark:bg-surface-900 overflow-x-auto"
           v-html="highlightSql(selectedQuery.query)"
         ></pre>
       </section>
 
-      <section class="min-w-0">
-        <div class="flex items-baseline gap-2 mb-2">
-          <h3 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-surface-500 dark:text-surface-400">
+      <section
+        class="min-w-0 rounded-md border border-surface-200 dark:border-surface-600 overflow-hidden
+               border-l-[3px] border-l-surface-400 dark:border-l-surface-500"
+      >
+        <div class="flex items-center justify-between gap-2 px-3 py-2
+                    border-b border-surface-200 dark:border-surface-600
+                    bg-surface-100/60 dark:bg-surface-800/60">
+          <h3 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-surface-500 dark:text-surface-400 m-0">
             Binds
+            <span
+              v-if="hasBinds(selectedQuery)"
+              class="ml-1 font-normal normal-case tracking-normal tabular-nums text-surface-400"
+            >
+              {{ bindsCount(selectedQuery) }}
+            </span>
           </h3>
-          <span
-            v-if="hasBinds(selectedQuery)"
-            class="text-[10px] tabular-nums text-surface-400 dark:text-surface-500"
-          >
-            {{ bindsCount(selectedQuery) }}
-          </span>
-          <div class="flex-1"></div>
           <CopyButton
             v-if="hasBinds(selectedQuery)"
             label="Copy binds"
@@ -218,14 +225,14 @@
         </div>
         <pre
           v-if="hasBinds(selectedQuery)"
-          class="font-mono text-[12px] leading-[1.5] whitespace-pre-wrap break-words m-0 px-3.5 py-3 rounded-md
-                 bg-surface-50/80 dark:bg-surface-800/60
-                 ring-1 ring-surface-200 dark:ring-surface-700"
+          class="font-mono text-[12px] leading-[1.5] whitespace-pre-wrap break-words m-0 px-3.5 py-3
+                 bg-surface-50 dark:bg-surface-900
+                 text-surface-800 dark:text-surface-100"
           v-html="formatBindsHtml(selectedQuery.binds)"
         ></pre>
         <p
           v-else
-          class="m-0 text-[12px] text-surface-400 dark:text-surface-500 italic px-1"
+          class="m-0 text-[12px] text-surface-400 dark:text-surface-500 italic px-3.5 py-3"
         >
           No bind parameters
         </p>

@@ -1,7 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { withExclusiveDurations, sumExclusive } from '../components/utils/timing'
-import { annotateQueryRepeats, nPlusOneGroups, normalizeSql, isMetaSqlType, annotateSqlNearMatches, collapseSqlNearMatches } from '../components/utils/sqlPatterns'
+import { annotateQueryRepeats, nPlusOneGroups, normalizeSql, isMetaSqlType, isSelectLikeSql, annotateSqlNearMatches, collapseSqlNearMatches } from '../components/utils/sqlPatterns'
 import { useSettingsStore } from './settings'
 
 export const useEventsStore = defineStore('events',  () => {
@@ -1114,6 +1114,97 @@ export const useEventsStore = defineStore('events',  () => {
     }
   }
 
+  /** Parse JSON object/array strings; leave other strings alone. */
+  function parseParamValue(value) {
+    if (typeof value !== 'string') return value
+    const s = value.trim()
+    if (!(s.startsWith('{') || s.startsWith('['))) return value
+    try {
+      return JSON.parse(s)
+    } catch {
+      return value
+    }
+  }
+
+  function isPlainObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
+  }
+
+  function isNestableParam(value) {
+    return Array.isArray(value) || isPlainObject(value)
+  }
+
+  /**
+   * Flatten nested objects/arrays into leaf paths.
+   * e.g. { status: 'x', tags: ['a'] } under "post" → post.status, post.tags[0]
+   */
+  function flattenParamLeaves(value, prefix = '') {
+    const out = new Map()
+    const walk = (val, path) => {
+      if (Array.isArray(val)) {
+        if (val.length === 0) {
+          if (path) out.set(path, val)
+          return
+        }
+        val.forEach((item, i) => {
+          const child = path ? `${path}[${i}]` : `[${i}]`
+          if (isNestableParam(item)) walk(item, child)
+          else out.set(child, item)
+        })
+        return
+      }
+      if (isPlainObject(val)) {
+        const keys = Object.keys(val)
+        if (keys.length === 0) {
+          if (path) out.set(path, val)
+          return
+        }
+        for (const key of keys) {
+          const child = path ? `${path}.${key}` : key
+          const item = val[key]
+          if (isNestableParam(item)) walk(item, child)
+          else out.set(child, item)
+        }
+        return
+      }
+      if (path) out.set(path, val)
+    }
+    walk(value, prefix)
+    return out
+  }
+
+  function paramRow(name, side, valueA, valueB) {
+    return {
+      name,
+      side,
+      isFramework: isFrameworkParam(name),
+      valueA: formatParamDisplay(valueA),
+      valueB: formatParamDisplay(valueB),
+      rawA: valueA,
+      rawB: valueB,
+    }
+  }
+
+  /** All leaf paths for nested params (includes identical leaves for All filter). */
+  function expandNestedParamLeaves(rootName, valueA, valueB) {
+    const leavesA = flattenParamLeaves(valueA, rootName)
+    const leavesB = flattenParamLeaves(valueB, rootName)
+    const paths = new Set([...leavesA.keys(), ...leavesB.keys()])
+    const rows = []
+    for (const path of paths) {
+      const hasA = leavesA.has(path)
+      const hasB = leavesB.has(path)
+      const a = hasA ? leavesA.get(path) : undefined
+      const b = hasB ? leavesB.get(path) : undefined
+      let side = 'same'
+      if (hasA && !hasB) side = 'onlyA'
+      else if (!hasA && hasB) side = 'onlyB'
+      else if (stableParamValue(a) !== stableParamValue(b)) side = 'changed'
+      rows.push(paramRow(path, side, a, b))
+    }
+    return rows
+  }
+
   function buildParamsDiff(idA, idB) {
     const paramsA = actions.value.get(idA)?.params || []
     const paramsB = actions.value.get(idB)?.params || []
@@ -1124,21 +1215,50 @@ export const useEventsStore = defineStore('events',  () => {
     for (const name of names) {
       const hasA = mapA.has(name)
       const hasB = mapB.has(name)
-      const valueA = hasA ? mapA.get(name) : undefined
-      const valueB = hasB ? mapB.get(name) : undefined
+      const rawA = hasA ? mapA.get(name) : undefined
+      const rawB = hasB ? mapB.get(name) : undefined
+      const valueA = hasA ? parseParamValue(rawA) : undefined
+      const valueB = hasB ? parseParamValue(rawB) : undefined
+
+      const nestA = hasA && isNestableParam(valueA)
+      const nestB = hasB && isNestableParam(valueB)
+
+      // Nested on both sides (equal or not): expand every leaf so All/Changed/Added/Removed see all paths
+      if (nestA && nestB) {
+        rows.push(...expandNestedParamLeaves(name, valueA, valueB))
+        continue
+      }
+      if (nestA && !hasB) {
+        for (const [path, val] of flattenParamLeaves(valueA, name)) {
+          rows.push(paramRow(path, 'onlyA', val, undefined))
+        }
+        continue
+      }
+      if (nestB && !hasA) {
+        for (const [path, val] of flattenParamLeaves(valueB, name)) {
+          rows.push(paramRow(path, 'onlyB', undefined, val))
+        }
+        continue
+      }
+      // One side nestable, other scalar/mixed → single top-level row
+      if (nestA || nestB) {
+        let side = 'changed'
+        if (hasA && !hasB) side = 'onlyA'
+        else if (!hasA && hasB) side = 'onlyB'
+        rows.push(paramRow(name, side, valueA, valueB))
+        continue
+      }
+
+      if (hasA && hasB && stableParamValue(valueA) === stableParamValue(valueB)) {
+        rows.push(paramRow(name, 'same', valueA, valueB))
+        continue
+      }
+
       let side = 'same'
       if (hasA && !hasB) side = 'onlyA'
       else if (!hasA && hasB) side = 'onlyB'
-      else if (stableParamValue(valueA) !== stableParamValue(valueB)) side = 'changed'
-      rows.push({
-        name,
-        side,
-        isFramework: isFrameworkParam(name),
-        valueA: formatParamDisplay(valueA),
-        valueB: formatParamDisplay(valueB),
-        rawA: valueA,
-        rawB: valueB,
-      })
+      else side = 'changed'
+      rows.push(paramRow(name, side, valueA, valueB))
     }
     const sideRank = { changed: 0, onlyB: 1, onlyA: 2, same: 3 }
     rows.sort((x, y) => (sideRank[x.side] - sideRank[y.side]) || x.name.localeCompare(y.name))
@@ -1149,7 +1269,9 @@ export const useEventsStore = defineStore('events',  () => {
   function isFrameworkParam(name) {
     const n = String(name || '')
     if (!n) return true
-    const lower = n.toLowerCase()
+    const root = n.split(/[.\[]/)[0] || n
+    const lower = root.toLowerCase()
+    const full = n.toLowerCase()
     if (
       lower === 'controller' ||
       lower === 'action' ||
@@ -1163,7 +1285,7 @@ export const useEventsStore = defineStore('events',  () => {
       return true
     }
     // Rails nested authenticity / button helpers
-    if (lower.endsWith('(authenticity_token)') || lower.includes('authenticity_token')) return true
+    if (full.endsWith('(authenticity_token)') || full.includes('authenticity_token')) return true
     return false
   }
 
@@ -1628,17 +1750,20 @@ export const useEventsStore = defineStore('events',  () => {
       if (ga && !gb) side = 'onlyA'
       else if (!ga && gb) side = 'onlyB'
       const deltaCount = countB - countA
-      const likelyFilterDriven = meaningfulParamDiff && (
+      const type = gb?.type || ga?.type || ''
+      const sample = gb?.sample || ga?.sample || pattern
+      const selectLike = isSelectLikeSql({ type, pattern, sample })
+      const likelyFilterDriven = selectLike && meaningfulParamDiff && (
         side === 'onlyA' ||
         side === 'onlyB' ||
         deltaCount !== 0
       )
       sqlDiff.push({
         pattern,
-        sample: gb?.sample || ga?.sample || pattern,
+        sample,
         bindsA: ga?.binds,
         bindsB: gb?.binds,
-        type: gb?.type || ga?.type || '',
+        type,
         side,
         countA,
         countB,

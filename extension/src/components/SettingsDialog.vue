@@ -156,6 +156,17 @@
           A time change counts when |Δ| &gt; max(ms, % × max(time A, time B)).
           Default: max(1 ms, 5%).
         </p>
+        <label class="flex items-center justify-between gap-3 pt-1">
+          <span>Compact SQL rows</span>
+          <input
+            v-model="settingsStore.compareCompactSql"
+            type="checkbox"
+            class="accent-primary-500"
+          />
+        </label>
+        <p class="text-[11px] text-surface-500 dark:text-surface-400 m-0">
+          One-line SQL preview in Compare (use Expand for the full query).
+        </p>
       </section>
     </div>
   </Dialog>

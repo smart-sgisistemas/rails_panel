@@ -5,6 +5,34 @@ All notable changes to the **Rails Panel** Chrome extension are documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.2] — 2026-08-06
+
+### Added
+
+- **Nested params leaf diff** — object/array params expand to paths (`post.status`); All / Changed / Added / Removed see every leaf
+- **Compact SQL rows** — Settings → Compare: one-line SQL preview in the table (Expand for full query)
+- **View in Params** from Filter? Expand — jumps to the matching Compare Params row
+- Near-match list preview: clause snippet + `B · …` SQL line
+
+### Changed
+
+- **Filter? (F?)** only applies to SELECT-like SQL (not INSERT / UPDATE / DELETE / TRANSACTION)
+- Near-match SQL rows participate in **Slower / Faster / Added / Removed** filters
+- Compare SQL layout: type + Copy/Expand on one row; SQL below (better narrow widths)
+- Expand SQL / Database query modals: single card borders (header + body), SQL A|B and binds side-by-side on wide screens
+- Δ Count / Δ Time visually stronger than absolute Count / Time
+- SQL preview wraps on spaces (less mid-identifier chopping)
+
+### Examples
+
+#### Nested params
+
+Compare `PostsController#create` 201 vs 422 → Params shows `post.title` changed while `post.body` / `post.status` stay as same leaves under **All**.
+
+#### Compact SQL
+
+Settings → enable **Compact SQL rows** → Compare SQL patterns show a single truncated line; use **Expand** for the full query.
+
 ## [2.5.1] — 2026-08-03
 
 ### Added
@@ -164,6 +192,7 @@ Filter Cache with **Hits** to see only keys whose hit/miss mix changed (`hitΔ`)
 
 Earlier Chrome Web Store / classic extension builds. See git history for details.
 
+[2.5.2]: https://github.com/smart-sgisistemas/rails_panel/releases/tag/v2.5.2
 [2.5.1]: https://github.com/smart-sgisistemas/rails_panel/releases/tag/v2.5.1
 [2.5.0]: https://github.com/smart-sgisistemas/rails_panel/releases/tag/v2.5.0
 [2.4.0]: https://github.com/smart-sgisistemas/rails_panel/releases/tag/v2.4.0

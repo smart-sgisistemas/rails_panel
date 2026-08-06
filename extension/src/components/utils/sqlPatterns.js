@@ -42,6 +42,26 @@ export function isMetaSqlType(type) {
   )
 }
 
+/**
+ * True for read/filter-style SQL (SELECT / WITH…SELECT), or AR type names
+ * that almost always wrap SELECTs (Load, Exists?, Count, …).
+ * Used so Filter? (F?) does not tag INSERT/UPDATE/DELETE/TRANSACTION.
+ */
+export function isSelectLikeSql({ type, pattern, sample, query } = {}) {
+  const sql = String(sample || query || pattern || '').trim()
+  if (/^SELECT\b/i.test(sql)) return true
+  if (/^WITH\b/i.test(sql) && /\bSELECT\b/i.test(sql)) return true
+
+  const t = String(type || '')
+  if (!t || isMetaSqlType(t)) return false
+  // ActiveRecord payload names for reads
+  if (/\b(Load|Exists\?|Count|Pluck|Ids|Pick)\s*$/i.test(t)) return true
+  if (/\b(Load|Exists\?|Count|Pluck|Ids|Pick)\b/i.test(t) && !/\b(Create|Update|Destroy|Delete|Insert)\b/i.test(t)) {
+    return true
+  }
+  return false
+}
+
 /** Tokenize normalized SQL for structural comparison. */
 export function tokenizeSql(sql) {
   return String(sql || '')
@@ -200,8 +220,13 @@ export function annotateSqlNearMatches(sqlDiffRows, { meaningfulParams = [], mea
     b.nearMatchPartnerSide = 'A'
     b.sqlClauseDiff = snippet
 
-    // Extra/changed WHERE while params changed → reinforce Filter?
-    if (paramHint && snippet) {
+    // Extra/changed WHERE while params changed → reinforce Filter? (SELECT only)
+    if (
+      paramHint &&
+      snippet &&
+      isSelectLikeSql(a) &&
+      isSelectLikeSql(b)
+    ) {
       a.likelyFilterDriven = true
       a.relatedParams = relatedParams
       b.likelyFilterDriven = true

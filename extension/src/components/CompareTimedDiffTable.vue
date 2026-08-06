@@ -82,7 +82,7 @@
         :pt="numCol"
       >
         <template #body="slotProps">
-          <span class="tabular-nums whitespace-nowrap">
+          <span class="tabular-nums whitespace-nowrap text-[11px] text-surface-500 dark:text-surface-400">
             {{ slotProps.data.countA }} → {{ slotProps.data.countB }}
           </span>
         </template>
@@ -93,11 +93,11 @@
         field="deltaCount"
         header="Δ Count"
         :style="colFit"
-        :pt="numCol"
+        :pt="deltaNumCol"
       >
         <template #body="slotProps">
           <span
-            class="tabular-nums whitespace-nowrap font-medium"
+            class="tabular-nums whitespace-nowrap text-[12px] font-semibold"
             :class="deltaClass(slotProps.data.deltaCount)"
           >{{ formatSignedCount(slotProps.data.deltaCount) }}</span>
         </template>
@@ -108,10 +108,10 @@
         field="timeB"
         header="Time"
         :style="colFit"
-        :pt="timeCol"
+        :pt="timeColMuted"
       >
         <template #body="slotProps">
-          <span class="tabular-nums whitespace-nowrap">
+          <span class="tabular-nums whitespace-nowrap text-[11px] text-surface-500 dark:text-surface-400">
             {{ formatMs(slotProps.data.timeA) }} → {{ formatMs(slotProps.data.timeB) }}
           </span>
         </template>
@@ -122,18 +122,18 @@
         field="deltaTime"
         header="Δ Time"
         :style="colFit"
-        :pt="timeCol"
+        :pt="deltaTimeCol"
       >
         <template #body="slotProps">
           <span
-            class="tabular-nums whitespace-nowrap font-medium"
+            class="tabular-nums whitespace-nowrap text-[12px] font-semibold"
             :class="deltaClass(slotProps.data.deltaTime)"
             :title="deltaTimeTitle(slotProps.data)"
           >
             {{ formatSignedMs(slotProps.data.deltaTime) }}
             <span
               v-if="deltaTimePct(slotProps.data) != null"
-              class="opacity-80"
+              class="opacity-90 font-medium"
             > ({{ formatSignedPct(deltaTimePct(slotProps.data)) }})</span>
           </span>
         </template>
@@ -199,8 +199,20 @@ const numCol = {
   bodyCell: { class: '!text-right align-top' },
 }
 
-const timeCol = {
+const deltaNumCol = {
+  headerCell: { class: '!text-right font-semibold' },
+  headerContent: { class: 'flex justify-end' },
+  bodyCell: { class: '!text-right align-top' },
+}
+
+const timeColMuted = {
   headerCell: { class: '!text-right', style: { paddingRight: '1rem' } },
+  headerContent: { class: 'flex justify-end' },
+  bodyCell: { class: '!text-right align-top', style: { paddingRight: '1rem' } },
+}
+
+const deltaTimeCol = {
+  headerCell: { class: '!text-right font-semibold', style: { paddingRight: '1rem' } },
   headerContent: { class: 'flex justify-end' },
   bodyCell: { class: '!text-right align-top', style: { paddingRight: '1rem' } },
 }

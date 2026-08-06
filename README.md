@@ -11,8 +11,9 @@ RailsPanel is a Chrome extension for Rails development that will end your tailin
 - **N+1 detection** — repeated SQL patterns called out in Database and Compare
 - **Compare (A/B)** — baseline vs candidate: params, SQL, cache, views, exceptions; click a row to jump into the detail tab with highlight; collapsible sections; copy SQL / cache / views from Compare
 - **Near-match SQL (≈)** — almost-identical patterns (e.g. extra `WHERE`) collapse to one **A≈B** row with the differing clause
-- **Filter? (F?)** — likely filter-driven SQL; Expand shows candidate params with A/B values
-- **Compare time noise** — configurable ms / % threshold for Diff / Slower / Faster (Settings)
+- **Filter? (F?)** — likely filter-driven **SELECT** SQL; Expand shows candidate params with A/B values and jump to Params
+- **Nested params** — Compare expands JSON params to leaf paths (`post.status`) for All / Diff filters
+- **Compare time noise** — configurable ms / % threshold for Diff / Slower / Faster (Settings); optional compact SQL rows
 - **Share requests** — copy/export and import requests (including external captures)
 - **Syntax highlighting** — SQL and params colored in detail views and Compare
 - **Standalone demos** — richer fixtures (Compare pairs including filter ≈/F?, N+1, 422 + stack, kitchen-sink request)

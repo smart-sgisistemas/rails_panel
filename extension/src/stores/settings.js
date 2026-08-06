@@ -94,6 +94,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const compareDiffPct = ref(
     clampInt(readNumber('railspanel.compareDiffPct', DEFAULTS.compareDiffPct), 0, 50, DEFAULTS.compareDiffPct)
   )
+  const compareCompactSql = ref(readBool('railspanel.compareCompactSql', false))
 
   watch(editor, (newVal) => {
     localStorage.setItem('railspanel.editor', newVal.id)
@@ -105,6 +106,10 @@ export const useSettingsStore = defineStore('settings', () => {
 
   watch(lockOn, (newVal) => {
     localStorage.setItem('railspanel.lockOn', String(newVal))
+  })
+
+  watch(compareCompactSql, (newVal) => {
+    localStorage.setItem('railspanel.compareCompactSql', String(newVal))
   })
 
   watchInt(requestCap, 'railspanel.requestCap', { min: 10, max: 1000, fallback: DEFAULTS.requestCap })
@@ -129,5 +134,6 @@ export const useSettingsStore = defineStore('settings', () => {
     nPlusOneMin,
     compareDiffMs,
     compareDiffPct,
+    compareCompactSql,
   }
 })

@@ -320,6 +320,7 @@
         v-model="sectionOpen.params"
         title="Params"
         :count-label="`${displayedParams.length}/${visibleParamsBase.length}`"
+        data-compare-params
       >
         <template #actions>
           <label
@@ -504,14 +505,45 @@
               </div>
             </template>
             <template #item="{ data }">
-              <div class="min-w-0 space-y-0.5" :title="data.sample || data.pattern">
-                <div
-                  v-if="data.type"
-                  class="text-[10px] font-medium text-surface-500 dark:text-surface-400"
-                >{{ data.type }}</div>
+              <div class="min-w-0 w-full space-y-1" :title="data.sample || data.pattern">
+                <div class="flex items-center gap-1.5 min-w-0">
+                  <div
+                    v-if="data.type"
+                    class="min-w-0 flex-1 truncate text-[10px] font-medium text-surface-500 dark:text-surface-400"
+                  >{{ data.type }}</div>
+                  <div v-else class="flex-1 min-w-0" />
+                  <div
+                    class="inline-flex items-center gap-1.5 shrink-0"
+                    @click.stop
+                  >
+                    <CopyButton
+                      compact
+                      label="Copy"
+                      title="Copy SQL"
+                      :get-text="() => data.sample || data.pattern || ''"
+                    />
+                    <button
+                      type="button"
+                      class="inline-flex items-center gap-0.5 rounded px-1 py-px text-[9px] leading-none font-medium
+                             cursor-pointer select-none transition-colors
+                             text-surface-600 dark:text-surface-300
+                             bg-surface-100 hover:bg-surface-200
+                             dark:bg-surface-700 dark:hover:bg-surface-600
+                             ring-1 ring-surface-200 dark:ring-surface-600"
+                      title="Expand SQL"
+                      @click="openSqlDetail(data)"
+                    >
+                      <i class="pi pi-window-maximize text-[9px]" aria-hidden="true"></i>
+                      Expand
+                    </button>
+                  </div>
+                </div>
                 <pre
-                  class="hljs min-w-0 whitespace-pre-wrap break-words
-                         font-mono text-[10px] leading-snug m-0 bg-transparent"
+                  class="hljs block w-full min-w-0 max-w-full m-0 bg-transparent
+                         font-mono text-[10px] leading-snug"
+                  :class="settings.compareCompactSql
+                    ? 'whitespace-nowrap overflow-hidden text-ellipsis'
+                    : 'whitespace-pre-wrap break-normal line-clamp-4 overflow-hidden'"
                   v-html="highlightSql(data.sample || data.pattern)"
                 ></pre>
                 <div
@@ -524,20 +556,28 @@
                   </span>
                   <span
                     v-if="data.sqlClauseDiff.kind === 'added'"
-                    class="text-emerald-700 dark:text-emerald-400 break-all"
-                  >{{ data.sqlClauseDiff.text }}</span>
+                    class="text-emerald-700 dark:text-emerald-400 break-normal"
+                  >{{ truncateSqlPreview(data.sqlClauseDiff.text) }}</span>
                   <span
                     v-else-if="data.sqlClauseDiff.kind === 'removed'"
-                    class="text-red-600 dark:text-red-400 break-all"
-                  >{{ data.sqlClauseDiff.text }}</span>
+                    class="text-red-600 dark:text-red-400 break-normal"
+                  >{{ truncateSqlPreview(data.sqlClauseDiff.text) }}</span>
                   <span
                     v-else
-                    class="break-all text-surface-700 dark:text-surface-200"
+                    class="break-normal text-surface-700 dark:text-surface-200"
                   >
-                    <span class="text-red-600 dark:text-red-400">{{ data.sqlClauseDiff.textA }}</span>
+                    <span class="text-red-600 dark:text-red-400">{{ truncateSqlPreview(data.sqlClauseDiff.textA, 48) }}</span>
                     <span class="mx-1 text-surface-400">→</span>
-                    <span class="text-emerald-700 dark:text-emerald-400">{{ data.sqlClauseDiff.textB }}</span>
+                    <span class="text-emerald-700 dark:text-emerald-400">{{ truncateSqlPreview(data.sqlClauseDiff.textB, 48) }}</span>
                   </span>
+                </div>
+                <div
+                  v-if="data.nearMatch && (data.sampleB || data.nearMatchPartnerSample)"
+                  class="text-[10px] leading-snug font-mono text-surface-500 dark:text-surface-400 truncate"
+                  :title="data.sampleB || data.nearMatchPartnerSample"
+                >
+                  <span class="font-semibold text-cyan-700 dark:text-cyan-300 mr-1">B</span>
+                  {{ data.sampleB || data.nearMatchPartnerSample }}
                 </div>
                 <div
                   v-if="data.likelyFilterDriven && relatedParamNames(data).length"
@@ -545,31 +585,9 @@
                   :title="filterHintTitle(data)"
                 >
                   <span class="font-semibold mr-1">F?</span>
-                  <span class="font-mono break-all">{{ relatedParamNames(data).join(', ') }}</span>
+                  <span class="font-mono break-normal">{{ relatedParamNames(data).join(', ') }}</span>
                 </div>
               </div>
-            </template>
-            <template #row-actions="{ data }">
-              <CopyButton
-                compact
-                label="Copy"
-                title="Copy SQL"
-                :get-text="() => data.sample || data.pattern || ''"
-              />
-              <button
-                type="button"
-                class="inline-flex items-center gap-0.5 rounded px-1 py-px text-[9px] leading-none font-medium
-                       cursor-pointer select-none transition-colors
-                       text-surface-600 dark:text-surface-300
-                       bg-surface-100 hover:bg-surface-200
-                       dark:bg-surface-700 dark:hover:bg-surface-600
-                       ring-1 ring-surface-200 dark:ring-surface-600"
-                title="Expand SQL"
-                @click="openSqlDetail(data)"
-              >
-                <i class="pi pi-window-maximize text-[9px]" aria-hidden="true"></i>
-                Expand
-              </button>
             </template>
           </CompareTimedDiffTable>
         </div>
@@ -874,7 +892,7 @@
         <span v-else class="flex-1">SQL</span>
       </template>
 
-      <div v-if="selectedSqlRow" class="space-y-4 max-h-[72vh] overflow-auto">
+      <div v-if="selectedSqlRow" class="space-y-3 max-h-[72vh] overflow-auto">
         <div class="flex flex-wrap items-center gap-2 text-[11px] tabular-nums text-surface-600 dark:text-surface-300">
           <span
             class="rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide"
@@ -901,33 +919,45 @@
 
         <section
           v-if="selectedSqlRow.likelyFilterDriven && relatedParamRows(selectedSqlRow).length"
-          class="min-w-0"
+          class="min-w-0 rounded-md border border-violet-500/25 dark:border-violet-400/20 overflow-hidden"
         >
-          <h3 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-violet-700 dark:text-violet-300 m-0 mb-2">
-            Possible filter params
-          </h3>
-          <div class="space-y-2">
+          <div class="px-3 py-2 border-b border-violet-500/20 dark:border-violet-400/15
+                      bg-violet-500/5 dark:bg-violet-400/5">
+            <h3 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-violet-700 dark:text-violet-300 m-0">
+              Possible filter params
+            </h3>
+          </div>
+          <div class="space-y-3 px-3 py-2.5">
             <div
               v-for="param in relatedParamRows(selectedSqlRow)"
               :key="param.name"
-              class="rounded-md px-3 py-2.5
-                     bg-violet-500/5 dark:bg-violet-400/5
-                     ring-1 ring-violet-500/25 dark:ring-violet-400/20"
+              class="min-w-0"
             >
               <div class="flex flex-wrap items-center gap-1.5 mb-1.5">
                 <span
                   class="rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide"
                   :class="paramSideBadgeClass(param)"
                 >{{ paramSideLabel(param) }}</span>
-                <span class="font-semibold text-[12px] text-surface-900 dark:text-surface-50 break-all">
+                <span class="font-semibold text-[12px] text-surface-900 dark:text-surface-50 break-all min-w-0">
                   {{ param.name }}
                 </span>
+                <button
+                  type="button"
+                  class="ml-auto shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium cursor-pointer
+                         text-violet-700 dark:text-violet-300
+                         bg-violet-500/10 hover:bg-violet-500/20
+                         ring-1 ring-violet-500/25 dark:ring-violet-400/20"
+                  title="Show this param in Compare → Params"
+                  @click="jumpToCompareParam(param.name)"
+                >
+                  View in Params
+                </button>
               </div>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[12px] font-mono leading-snug">
                 <div class="min-w-0">
                   <div class="text-[10px] font-semibold uppercase tracking-wide text-surface-500 mb-0.5">A</div>
                   <pre
-                    class="m-0 max-h-32 overflow-auto whitespace-pre-wrap break-words"
+                    class="m-0 max-h-32 overflow-auto whitespace-pre-wrap break-normal"
                     :title="paramTitle(param.rawA, param.valueA)"
                     v-html="prettyParam(param.rawA, param.valueA)"
                   ></pre>
@@ -935,8 +965,8 @@
                 <div class="min-w-0">
                   <div class="text-[10px] font-semibold uppercase tracking-wide text-surface-500 mb-0.5">B</div>
                   <pre
-                    class="m-0 max-h-32 overflow-auto whitespace-pre-wrap break-words"
-                    :class="param.side === 'changed' ? 'ring-1 ring-inset ring-amber-500/25 rounded-sm px-0.5' : ''"
+                    class="m-0 max-h-32 overflow-auto whitespace-pre-wrap break-normal"
+                    :class="param.side === 'changed' ? 'rounded-sm px-0.5 bg-amber-500/10' : ''"
                     :title="paramTitle(param.rawB, param.valueB)"
                     v-html="prettyParam(param.rawB, param.valueB)"
                   ></pre>
@@ -948,19 +978,19 @@
 
         <section
           v-if="selectedSqlRow.sqlClauseDiff"
-          class="min-w-0"
+          class="min-w-0 rounded-md border border-cyan-500/25 dark:border-cyan-400/20 overflow-hidden
+                 border-l-[3px] border-l-cyan-500 dark:border-l-cyan-400"
         >
-          <h3 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-cyan-700 dark:text-cyan-400 m-0 mb-2">
-            SQL difference
-          </h3>
-          <div
-            class="font-mono text-[12px] leading-snug px-3 py-2.5 rounded-md
-                   bg-cyan-500/5 dark:bg-cyan-400/5
-                   ring-1 ring-cyan-500/25 dark:ring-cyan-400/20"
-          >
-            <div class="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300 mb-1">
-              {{ selectedSqlRow.sqlClauseDiff.label }}
-            </div>
+          <div class="px-3 py-2 border-b border-cyan-500/15 dark:border-cyan-400/10
+                      bg-cyan-500/5 dark:bg-cyan-400/5">
+            <h3 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-cyan-700 dark:text-cyan-400 m-0">
+              SQL difference
+              <span class="ml-1.5 font-normal normal-case tracking-normal text-cyan-600/80 dark:text-cyan-300/80">
+                {{ selectedSqlRow.sqlClauseDiff.label }}
+              </span>
+            </h3>
+          </div>
+          <div class="font-mono text-[12px] leading-snug px-3 py-2.5">
             <div
               v-if="selectedSqlRow.sqlClauseDiff.kind === 'added'"
               class="text-emerald-700 dark:text-emerald-400 break-words whitespace-pre-wrap"
@@ -985,63 +1015,76 @@
           </div>
         </section>
 
-        <section class="min-w-0">
-          <div class="flex items-center justify-between gap-2 mb-2">
-            <h3 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-sky-700 dark:text-sky-400 m-0">
-              SQL
-              <span
-                v-if="selectedSqlRow.nearMatch"
-                class="ml-1 font-normal normal-case tracking-normal text-surface-400"
-              >A</span>
-            </h3>
-            <CopyButton
-              label="Copy SQL"
-              title="Copy SQL A to clipboard"
-              :get-text="() => selectedSqlRow?.sampleA || selectedSqlRow?.sample || selectedSqlRow?.pattern || ''"
-            />
-          </div>
-          <pre
-            class="hljs font-mono text-[13px] leading-[1.55] whitespace-pre-wrap break-words m-0 px-3.5 py-3 rounded-md
-                   bg-surface-50 dark:bg-surface-900
-                   ring-1 ring-sky-500/20 dark:ring-sky-400/25
-                   border-l-[3px] border-sky-500 dark:border-sky-400"
-            v-html="highlightSql(selectedSqlRow.sampleA || selectedSqlRow.sample || selectedSqlRow.pattern)"
-          ></pre>
-        </section>
-
-        <section
-          v-if="selectedSqlRow.nearMatch && (selectedSqlRow.sampleB || selectedSqlRow.nearMatchPartnerSample || selectedSqlRow.nearMatchPartnerPattern)"
-          class="min-w-0"
+        <div
+          class="grid grid-cols-1 gap-3 min-w-0"
+          :class="selectedSqlRow.nearMatch ? 'lg:grid-cols-2' : ''"
         >
-          <div class="flex items-center justify-between gap-2 mb-2">
-            <h3 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-cyan-700 dark:text-cyan-400 m-0">
-              SQL
-              <span class="ml-1 font-normal normal-case tracking-normal text-surface-400">B</span>
-            </h3>
-            <CopyButton
-              label="Copy SQL"
-              title="Copy SQL B to clipboard"
-              :get-text="() => selectedSqlRow?.sampleB || selectedSqlRow?.nearMatchPartnerSample || selectedSqlRow?.nearMatchPartnerPattern || ''"
-            />
-          </div>
-          <pre
-            class="hljs font-mono text-[13px] leading-[1.55] whitespace-pre-wrap break-words m-0 px-3.5 py-3 rounded-md
-                   bg-surface-50 dark:bg-surface-900
-                   ring-1 ring-cyan-500/25 dark:ring-cyan-400/20
-                   border-l-[3px] border-cyan-500 dark:border-cyan-400"
-            v-html="highlightSql(selectedSqlRow.sampleB || selectedSqlRow.nearMatchPartnerSample || selectedSqlRow.nearMatchPartnerPattern)"
-          ></pre>
-        </section>
+          <section
+            class="min-w-0 rounded-md border border-surface-200 dark:border-surface-600 overflow-hidden
+                   border-l-[3px] border-l-sky-500 dark:border-l-sky-400"
+          >
+            <div class="flex items-center justify-between gap-2 px-3 py-2
+                        border-b border-surface-200 dark:border-surface-600
+                        bg-surface-100/60 dark:bg-surface-800/60">
+              <h3 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-sky-700 dark:text-sky-400 m-0">
+                SQL
+                <span
+                  v-if="selectedSqlRow.nearMatch"
+                  class="ml-1 font-normal normal-case tracking-normal text-surface-400"
+                >A</span>
+              </h3>
+              <CopyButton
+                label="Copy SQL"
+                title="Copy SQL A to clipboard"
+                :get-text="() => selectedSqlRow?.sampleA || selectedSqlRow?.sample || selectedSqlRow?.pattern || ''"
+              />
+            </div>
+            <pre
+              class="hljs font-mono text-[13px] leading-[1.55] whitespace-pre-wrap break-normal m-0 px-3.5 py-3
+                     bg-surface-50 dark:bg-surface-900 overflow-x-auto"
+              v-html="highlightSql(selectedSqlRow.sampleA || selectedSqlRow.sample || selectedSqlRow.pattern)"
+            ></pre>
+          </section>
 
-        <section
+          <section
+            v-if="selectedSqlRow.nearMatch && (selectedSqlRow.sampleB || selectedSqlRow.nearMatchPartnerSample || selectedSqlRow.nearMatchPartnerPattern)"
+            class="min-w-0 rounded-md border border-surface-200 dark:border-surface-600 overflow-hidden
+                   border-l-[3px] border-l-cyan-500 dark:border-l-cyan-400"
+          >
+            <div class="flex items-center justify-between gap-2 px-3 py-2
+                        border-b border-surface-200 dark:border-surface-600
+                        bg-surface-100/60 dark:bg-surface-800/60">
+              <h3 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-cyan-700 dark:text-cyan-400 m-0">
+                SQL
+                <span class="ml-1 font-normal normal-case tracking-normal text-surface-400">B</span>
+              </h3>
+              <CopyButton
+                label="Copy SQL"
+                title="Copy SQL B to clipboard"
+                :get-text="() => selectedSqlRow?.sampleB || selectedSqlRow?.nearMatchPartnerSample || selectedSqlRow?.nearMatchPartnerPattern || ''"
+              />
+            </div>
+            <pre
+              class="hljs font-mono text-[13px] leading-[1.55] whitespace-pre-wrap break-normal m-0 px-3.5 py-3
+                     bg-surface-50 dark:bg-surface-900 overflow-x-auto"
+              v-html="highlightSql(selectedSqlRow.sampleB || selectedSqlRow.nearMatchPartnerSample || selectedSqlRow.nearMatchPartnerPattern)"
+            ></pre>
+          </section>
+        </div>
+
+        <div
           v-if="hasBinds(selectedSqlRow.bindsA) || hasBinds(selectedSqlRow.bindsB)"
-          class="min-w-0 space-y-3"
+          class="grid grid-cols-1 gap-3 min-w-0"
+          :class="hasBinds(selectedSqlRow.bindsA) && hasBinds(selectedSqlRow.bindsB) ? 'lg:grid-cols-2' : ''"
         >
           <div
             v-if="hasBinds(selectedSqlRow.bindsA)"
-            class="min-w-0"
+            class="min-w-0 rounded-md border border-surface-200 dark:border-surface-600 overflow-hidden
+                   border-l-[3px] border-l-surface-400 dark:border-l-surface-500"
           >
-            <div class="flex items-center justify-between gap-2 mb-2">
+            <div class="flex items-center justify-between gap-2 px-3 py-2
+                        border-b border-surface-200 dark:border-surface-600
+                        bg-surface-100/60 dark:bg-surface-800/60">
               <h3 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-surface-500 dark:text-surface-400 m-0">
                 Binds A
                 <span class="ml-1 font-normal normal-case tracking-normal tabular-nums text-surface-400">
@@ -1055,18 +1098,23 @@
               />
             </div>
             <pre
-              class="font-mono text-[12px] leading-[1.5] whitespace-pre-wrap break-words m-0 px-3 py-2.5 rounded-md
+              class="font-mono text-[12px] leading-[1.5] whitespace-pre-wrap break-normal m-0 px-3 py-2.5
                      bg-surface-50 dark:bg-surface-900
-                     ring-1 ring-surface-200 dark:ring-surface-600
-                     text-surface-800 dark:text-surface-100"
+                     text-surface-800 dark:text-surface-100 overflow-x-auto"
               v-html="formatBindsHtml(selectedSqlRow.bindsA)"
             ></pre>
           </div>
           <div
             v-if="hasBinds(selectedSqlRow.bindsB)"
-            class="min-w-0"
+            class="min-w-0 rounded-md border border-surface-200 dark:border-surface-600 overflow-hidden
+                   border-l-[3px]"
+            :class="bindsChanged(selectedSqlRow)
+              ? 'border-l-amber-500 dark:border-l-amber-400'
+              : 'border-l-surface-400 dark:border-l-surface-500'"
           >
-            <div class="flex items-center justify-between gap-2 mb-2">
+            <div class="flex items-center justify-between gap-2 px-3 py-2
+                        border-b border-surface-200 dark:border-surface-600
+                        bg-surface-100/60 dark:bg-surface-800/60">
               <h3 class="text-[11px] font-semibold uppercase tracking-[0.1em] text-surface-500 dark:text-surface-400 m-0">
                 Binds B
                 <span class="ml-1 font-normal normal-case tracking-normal tabular-nums text-surface-400">
@@ -1080,17 +1128,13 @@
               />
             </div>
             <pre
-              class="font-mono text-[12px] leading-[1.5] whitespace-pre-wrap break-words m-0 px-3 py-2.5 rounded-md
+              class="font-mono text-[12px] leading-[1.5] whitespace-pre-wrap break-normal m-0 px-3 py-2.5
                      bg-surface-50 dark:bg-surface-900
-                     ring-1 ring-surface-200 dark:ring-surface-600
-                     text-surface-800 dark:text-surface-100"
-              :class="bindsChanged(selectedSqlRow)
-                ? 'ring-amber-500/30 dark:ring-amber-400/30 border-l-[3px] border-amber-500 dark:border-amber-400'
-                : ''"
+                     text-surface-800 dark:text-surface-100 overflow-x-auto"
               v-html="formatBindsHtml(selectedSqlRow.bindsB)"
             ></pre>
           </div>
-        </section>
+        </div>
 
         <div class="flex justify-end gap-2">
           <button
@@ -1109,7 +1153,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, nextTick } from 'vue'
 import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
 import hljs from 'highlight.js/lib/core'
@@ -1344,13 +1388,13 @@ const filteredSql = computed(() => {
           r.isNPlusOneA !== r.isNPlusOneB
       )
     case 'added':
-      return rows.filter((r) => r.side === 'onlyB')
+      return rows.filter((r) => r.side === 'onlyB' || isNearSqlAdded(r))
     case 'removed':
-      return rows.filter((r) => r.side === 'onlyA')
+      return rows.filter((r) => r.side === 'onlyA' || isNearSqlRemoved(r))
     case 'slower':
-      return rows.filter((r) => r.side === 'both' && isSlower(r))
+      return rows.filter((r) => isSqlBothSides(r) && isSlower(r))
     case 'faster':
-      return rows.filter((r) => r.side === 'both' && isFaster(r))
+      return rows.filter((r) => isSqlBothSides(r) && isFaster(r))
     case 'n1':
       return rows.filter((r) => r.isNPlusOne)
     case 'near':
@@ -1380,6 +1424,25 @@ function isSlower(row) {
 
 function isFaster(row) {
   return (Number(row.deltaTime) || 0) < -timeDeltaThreshold(row)
+}
+
+/** Collapsed near-match rows participate like both-sides for timing filters. */
+function isSqlBothSides(row) {
+  return row.side === 'both' || row.side === 'near' || !!row.nearMatch
+}
+
+/** Near-match with a clause gained on B (or rewritten). */
+function isNearSqlAdded(row) {
+  if (row.side !== 'near' && !row.nearMatch) return false
+  const kind = row.sqlClauseDiff?.kind
+  return kind === 'added' || kind === 'changed'
+}
+
+/** Near-match with a clause lost on B (or rewritten). */
+function isNearSqlRemoved(row) {
+  if (row.side !== 'near' && !row.nearMatch) return false
+  const kind = row.sqlClauseDiff?.kind
+  return kind === 'removed' || kind === 'changed'
 }
 
 function filterTimed(rows, filter) {
@@ -1520,6 +1583,29 @@ function openSqlDetail(row) {
   selectedSqlRow.value = row
   sqlDetailVisible.value = true
 }
+
+function truncateSqlPreview(text, max = 96) {
+  const s = String(text || '').replace(/\s+/g, ' ').trim()
+  if (!s) return ''
+  if (s.length <= max) return s
+  return `${s.slice(0, max - 1)}…`
+}
+
+async function jumpToCompareParam(paramName) {
+  const name = String(paramName || '').trim()
+  if (!name) return
+  sqlDetailVisible.value = false
+  sectionOpen.params = true
+  hideFrameworkParams.value = false
+  paramFilter.value = 'all'
+  paramsSearch.value = name
+  await nextTick()
+  document.querySelector('[data-compare-params]')?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start',
+  })
+}
+
 function flashIo(message, isError = false) {
   clearTimeout(ioTimer)
   ioMessage.value = message
